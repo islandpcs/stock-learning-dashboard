@@ -789,6 +789,121 @@ select.inp { cursor: pointer; }
   border-color: var(--accent); background: #0098a010; color: var(--text);
 }
 .source-chip input[type=checkbox] { accent-color: var(--accent); }
+
+/* ══ 지식 창고 ══ */
+.kd-tabs { display:flex; gap:4px; margin-bottom:20px; border-bottom:2px solid var(--border); }
+.kd-tab {
+  padding:10px 18px; font-size:13px; font-weight:600;
+  border:none; background:none; cursor:pointer; color:var(--text3);
+  border-bottom:3px solid transparent; margin-bottom:-2px;
+  transition:all 0.2s; font-family:var(--body);
+}
+.kd-tab:hover { color:var(--text2); }
+.kd-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+.kd-section { display:none; }
+.kd-section.active { display:block; animation:fadeIn 0.25s ease; }
+
+/* 독서 카드 */
+.book-card {
+  background:var(--bg2); border:1px solid var(--border);
+  border-radius:12px; padding:20px; margin-bottom:12px;
+  display:flex; gap:18px; transition:border-color 0.2s;
+}
+.book-card:hover { border-color:var(--border2); }
+.book-spine {
+  width:52px; min-height:80px; border-radius:6px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:26px; flex-shrink:0;
+  background:linear-gradient(135deg, var(--bg3), var(--bg4));
+  border:1px solid var(--border);
+}
+.book-info { flex:1; min-width:0; }
+.book-title { font-family:var(--display); font-size:16px; font-weight:700; color:var(--text); margin-bottom:3px; }
+.book-author { font-size:12px; color:var(--text3); font-family:var(--mono); margin-bottom:8px; }
+.book-stars { color:var(--gold); font-size:14px; margin-bottom:8px; }
+.book-memo { font-size:13px; color:var(--text2); line-height:1.7; white-space:pre-wrap; }
+.book-tags { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+.book-status {
+  font-size:11px; font-family:var(--mono); padding:2px 9px;
+  border-radius:10px; font-weight:600;
+}
+.status-done    { background:#00c9a715; color:var(--accent);  border:1px solid #00c9a730; }
+.status-reading { background:#f0a50015; color:var(--gold);    border:1px solid #f0a50030; }
+.status-todo    { background:#1a6fd415; color:var(--blue);    border:1px solid #1a6fd430; }
+
+/* 학습 노트 카드 */
+.note-card {
+  background:var(--bg2); border:1px solid var(--border);
+  border-left:3px solid var(--accent);
+  border-radius:10px; padding:18px 20px; margin-bottom:10px;
+  transition:border-color 0.2s;
+}
+.note-card:hover { border-color:var(--border2); }
+.note-title { font-family:var(--display); font-size:15px; font-weight:700; color:var(--text); margin-bottom:6px; }
+.note-body  { font-size:13px; color:var(--text2); line-height:1.75; white-space:pre-wrap; }
+.note-meta  { font-family:var(--mono); font-size:11px; color:var(--text3); margin-top:10px; }
+
+/* 용어 사전 */
+.term-card {
+  background:var(--bg2); border:1px solid var(--border);
+  border-radius:10px; padding:16px 18px; margin-bottom:8px;
+  transition:border-color 0.2s;
+}
+.term-card:hover { border-color:var(--border2); }
+.term-word { font-family:var(--display); font-size:15px; font-weight:700; color:var(--text); }
+.term-eng  { font-family:var(--mono); font-size:11px; color:var(--text3); margin-left:8px; }
+.term-def  { font-size:13px; color:var(--text2); margin-top:6px; line-height:1.7; white-space:pre-wrap; }
+.term-example { font-size:12px; color:var(--accent); margin-top:6px; font-style:italic; }
+
+/* 인사이트 카드 */
+.insight-card {
+  background:var(--bg2); border:1px solid var(--border);
+  border-left:3px solid var(--gold);
+  border-radius:10px; padding:18px 20px; margin-bottom:10px;
+  transition:border-color 0.2s;
+}
+.insight-card:hover { border-color:var(--border2); }
+.insight-source { font-family:var(--mono); font-size:11px; color:var(--gold); margin-bottom:6px; }
+.insight-body   { font-size:13px; color:var(--text2); line-height:1.75; white-space:pre-wrap; }
+.insight-apply  { font-size:12px; color:var(--accent); margin-top:8px; }
+
+/* 공통 검색·필터 */
+.kd-search {
+  display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; align-items:center;
+}
+.kd-search-input {
+  flex:1; min-width:200px;
+  background:var(--bg3); border:1px solid var(--border);
+  border-radius:8px; padding:9px 14px;
+  color:var(--text); font-family:var(--body); font-size:13px; outline:none;
+}
+.kd-search-input:focus { border-color:var(--accent); }
+
+/* 태그 클라우드 */
+.tag-cloud { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
+.cloud-tag {
+  padding:4px 12px; border-radius:20px; font-size:11px; font-weight:600;
+  border:1px solid var(--border); background:var(--bg3);
+  color:var(--text2); cursor:pointer; transition:all 0.15s;
+}
+.cloud-tag.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+.cloud-tag:hover  { border-color:var(--border2); }
+
+/* 통계 미니 배지 */
+.kd-stat {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:6px 14px; border-radius:20px;
+  background:var(--bg3); border:1px solid var(--border);
+  font-size:12px; color:var(--text2);
+}
+.kd-stat strong { color:var(--text); font-family:var(--mono); }
+
+/* 폼 섹션 헤더 */
+.form-section-hdr {
+  font-family:var(--display); font-size:14px; font-weight:700;
+  color:var(--accent); text-transform:uppercase; letter-spacing:0.5px;
+  margin-bottom:12px; display:flex; align-items:center; gap:8px;
+}
 </style>
 </head>
 <body>
@@ -815,18 +930,29 @@ select.inp { cursor: pointer; }
 </div>
 
 <nav>
-  <button class="tab-btn" onclick="switchTab('live')">🔴 실시간 시세·캘린더</button>
-  <button class="tab-btn active" onclick="switchTab('routine')">① 오늘 루틴</button>
-  <button class="tab-btn" onclick="switchTab('basics')">② 투자 기초</button>
-  <button class="tab-btn" onclick="switchTab('indicators')">③ 글로벌 지표</button>
-  <button class="tab-btn" onclick="switchTab('korea')">④ 국내 지표</button>
-  <button class="tab-btn" onclick="switchTab('sources')">⑤ 뉴스·도구</button>
-  <button class="tab-btn" onclick="switchTab('curriculum')">⑥ 학습 로드맵</button>
-  <button class="tab-btn" onclick="switchTab('psychology')">⑦ 투자 심리</button>
-  <button class="tab-btn" onclick="switchTab('watchlist')">⭐ 관심종목</button>
-  <button class="tab-btn" onclick="switchTab('journal')">📓 투자일지</button>
-  <button class="tab-btn" onclick="switchTab('research')">🌐 글로벌 리서치</button>
-  <button class="tab-btn" onclick="switchTab('ainews')">🤖 AI 뉴스 필터</button>
+  <div style="width:100%; display:flex; flex-wrap:wrap; background:var(--bg2); border-bottom:1px solid var(--border); padding:0 8px;">
+    <!-- 1행: 시장 정보 -->
+    <div style="display:flex; align-items:center; padding:2px 8px; font-size:10px; font-family:var(--mono); color:var(--text3); border-right:1px solid var(--border); margin:4px 0;">📊 시장</div>
+    <button class="tab-btn" onclick="switchTab('live')" style="font-size:12px; padding:10px 12px;">🔴 실시간</button>
+    <button class="tab-btn" onclick="switchTab('indicators')" style="font-size:12px; padding:10px 12px;">③ 글로벌지표</button>
+    <button class="tab-btn" onclick="switchTab('korea')" style="font-size:12px; padding:10px 12px;">④ 국내지표</button>
+    <button class="tab-btn" onclick="switchTab('sources')" style="font-size:12px; padding:10px 12px;">⑤ 뉴스·도구</button>
+    <button class="tab-btn" onclick="switchTab('research')" style="font-size:12px; padding:10px 12px;">🌐 리서치</button>
+    <button class="tab-btn" onclick="switchTab('ainews')" style="font-size:12px; padding:10px 12px;">🤖 AI필터</button>
+
+    <!-- 구분 -->
+    <div style="width:100%; height:1px; background:var(--border);"></div>
+
+    <!-- 2행: 학습·관리 -->
+    <div style="display:flex; align-items:center; padding:2px 8px; font-size:10px; font-family:var(--mono); color:var(--text3); border-right:1px solid var(--border); margin:4px 0;">📚 학습·관리</div>
+    <button class="tab-btn active" onclick="switchTab('routine')" style="font-size:12px; padding:10px 12px;">① 오늘루틴</button>
+    <button class="tab-btn" onclick="switchTab('basics')" style="font-size:12px; padding:10px 12px;">② 투자기초</button>
+    <button class="tab-btn" onclick="switchTab('curriculum')" style="font-size:12px; padding:10px 12px;">⑥ 로드맵</button>
+    <button class="tab-btn" onclick="switchTab('psychology')" style="font-size:12px; padding:10px 12px;">⑦ 심리</button>
+    <button class="tab-btn" onclick="switchTab('watchlist')" style="font-size:12px; padding:10px 12px;">⭐ 관심종목</button>
+    <button class="tab-btn" onclick="switchTab('journal')" style="font-size:12px; padding:10px 12px;">📓 투자일지</button>
+    <button class="tab-btn" onclick="switchTab('knowledge')" style="font-size:12px; padding:10px 12px;">📚 지식창고</button>
+  </div>
 </nav>
 
 <main>
@@ -1611,6 +1737,248 @@ select.inp { cursor: pointer; }
 
   <div id="aiNewsResults"></div>
   <div id="aiRawText" style="display:none;"></div>
+</div>
+
+
+<!-- 📚 지식 창고 -->
+<div class="tab-panel" id="panel-knowledge">
+  <div class="section-header">
+    <div class="section-title">📚 지식 창고</div>
+    <div class="section-desc">독서 기록 · 학습 노트 · 투자 용어 사전 · 인사이트 메모 — 브라우저 자동 저장</div>
+  </div>
+
+  <!-- 통계 요약 -->
+  <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px;" id="kdStats"></div>
+
+  <!-- 내부 탭 -->
+  <div class="kd-tabs">
+    <button class="kd-tab active" onclick="switchKdTab('books',this)">📖 독서 기록</button>
+    <button class="kd-tab" onclick="switchKdTab('notes',this)">✏️ 학습 노트</button>
+    <button class="kd-tab" onclick="switchKdTab('terms',this)">🗂 용어 사전</button>
+    <button class="kd-tab" onclick="switchKdTab('insights',this)">💡 인사이트</button>
+  </div>
+
+  <!-- ── 📖 독서 기록 ── -->
+  <div class="kd-section active" id="kd-books">
+    <div class="card" style="margin-bottom:16px;">
+      <div class="form-section-hdr">📖 책 추가</div>
+      <div class="card-body">
+        <div class="input-row">
+          <div><label class="form-label">책 제목</label>
+            <input class="inp inp-lg" id="bk-title" placeholder="현명한 투자자" /></div>
+          <div><label class="form-label">저자</label>
+            <input class="inp inp-md" id="bk-author" placeholder="벤저민 그레이엄" /></div>
+          <div><label class="form-label">상태</label>
+            <select class="inp inp-sm" id="bk-status">
+              <option value="done">✅ 완독</option>
+              <option value="reading">📖 읽는 중</option>
+              <option value="todo">📌 읽을 예정</option>
+            </select>
+          </div>
+          <div><label class="form-label">별점</label>
+            <select class="inp inp-sm" id="bk-star">
+              <option value="5">⭐⭐⭐⭐⭐</option>
+              <option value="4">⭐⭐⭐⭐</option>
+              <option value="3">⭐⭐⭐</option>
+              <option value="2">⭐⭐</option>
+              <option value="1">⭐</option>
+            </select>
+          </div>
+          <div><label class="form-label">아이콘</label>
+            <input class="inp inp-sm" id="bk-icon" placeholder="📗" maxlength="2" style="font-size:18px; text-align:center;" /></div>
+        </div>
+        <div class="input-row">
+          <div style="flex:1;"><label class="form-label">핵심 메모 (줄바꿈 가능)</label>
+            <textarea class="inp inp-xl" id="bk-memo" rows="4" placeholder="이 책에서 배운 핵심 내용, 기억하고 싶은 문장, 투자에 적용할 점 등을 자유롭게 기록하세요."></textarea>
+          </div>
+        </div>
+        <div class="input-row">
+          <div style="flex:1;"><label class="form-label">태그 (쉼표로 구분)</label>
+            <input class="inp inp-xl" id="bk-tags" placeholder="가치투자, 재무분석, 심리, 매크로, 기술적분석" /></div>
+          <div style="display:flex; align-items:flex-end;">
+            <button class="btn btn-primary" onclick="addBook()">추가</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="kd-search">
+      <input class="kd-search-input" id="bk-search" oninput="renderBooks()" placeholder="🔍 책 제목·저자·메모 검색..." />
+      <select class="inp" id="bk-filter-status" onchange="renderBooks()" style="width:140px;">
+        <option value="ALL">전체 상태</option>
+        <option value="done">✅ 완독</option>
+        <option value="reading">📖 읽는 중</option>
+        <option value="todo">📌 읽을 예정</option>
+      </select>
+    </div>
+    <div class="tag-cloud" id="bk-tag-cloud"></div>
+    <div id="bk-list"></div>
+    <div id="bk-empty" class="empty-state" style="display:none;">
+      <div class="empty-icon">📚</div>
+      <div>아직 등록된 책이 없습니다.<br>첫 투자 책을 추가해보세요!</div>
+    </div>
+  </div>
+
+  <!-- ── ✏️ 학습 노트 ── -->
+  <div class="kd-section" id="kd-notes">
+    <div class="card" style="margin-bottom:16px;">
+      <div class="form-section-hdr">✏️ 노트 추가</div>
+      <div class="card-body">
+        <div class="input-row">
+          <div style="flex:2;"><label class="form-label">제목</label>
+            <input class="inp inp-xl" id="nt-title" placeholder="PER이 낮아도 투자하면 안 되는 경우" /></div>
+          <div style="flex:1;"><label class="form-label">카테고리</label>
+            <select class="inp inp-md" id="nt-cat">
+              <option>기본적 분석</option>
+              <option>기술적 분석</option>
+              <option>거시경제</option>
+              <option>리스크 관리</option>
+              <option>투자 심리</option>
+              <option>포트폴리오</option>
+              <option>미국시장</option>
+              <option>한국시장</option>
+              <option>기타</option>
+            </select>
+          </div>
+        </div>
+        <div class="input-row">
+          <div style="flex:1;"><label class="form-label">내용</label>
+            <textarea class="inp inp-xl" id="nt-body" rows="5" placeholder="개념 설명, 공식, 예시, 나만의 해석 등 자유롭게 기록하세요.&#10;&#10;예) PER이 낮은 이유가 이익이 일시적으로 높은 것일 수 있다.&#10;    → 분기별 이익 추세를 반드시 확인할 것"></textarea>
+          </div>
+        </div>
+        <div class="input-row">
+          <div style="flex:1;"><label class="form-label">태그</label>
+            <input class="inp inp-xl" id="nt-tags" placeholder="PER, 가치투자, 함정주의" /></div>
+          <div style="display:flex; align-items:flex-end;">
+            <button class="btn btn-primary" onclick="addNote()">저장</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="kd-search">
+      <input class="kd-search-input" id="nt-search" oninput="renderNotes()" placeholder="🔍 제목·내용 검색..." />
+      <select class="inp" id="nt-filter-cat" onchange="renderNotes()" style="width:150px;">
+        <option value="ALL">전체 카테고리</option>
+        <option>기본적 분석</option><option>기술적 분석</option>
+        <option>거시경제</option><option>리스크 관리</option>
+        <option>투자 심리</option><option>포트폴리오</option>
+        <option>미국시장</option><option>한국시장</option><option>기타</option>
+      </select>
+    </div>
+    <div class="tag-cloud" id="nt-tag-cloud"></div>
+    <div id="nt-list"></div>
+    <div id="nt-empty" class="empty-state" style="display:none;">
+      <div class="empty-icon">✏️</div>
+      <div>아직 작성된 학습 노트가 없습니다.</div>
+    </div>
+  </div>
+
+  <!-- ── 🗂 용어 사전 ── -->
+  <div class="kd-section" id="kd-terms">
+    <div class="card" style="margin-bottom:16px;">
+      <div class="form-section-hdr">🗂 용어 추가</div>
+      <div class="card-body">
+        <div class="input-row">
+          <div><label class="form-label">한국어 용어</label>
+            <input class="inp inp-md" id="tm-word" placeholder="주가수익비율" /></div>
+          <div><label class="form-label">영어 약어</label>
+            <input class="inp inp-sm" id="tm-eng" placeholder="PER / P/E" /></div>
+          <div><label class="form-label">카테고리</label>
+            <select class="inp inp-sm" id="tm-cat">
+              <option>재무지표</option><option>기술적분석</option>
+              <option>거시경제</option><option>시장구조</option>
+              <option>투자전략</option><option>기타</option>
+            </select>
+          </div>
+        </div>
+        <div class="input-row">
+          <div style="flex:1;"><label class="form-label">정의 (나만의 말로)</label>
+            <textarea class="inp inp-xl" id="tm-def" rows="3" placeholder="주가를 주당순이익(EPS)으로 나눈 값. 주가가 1년 이익의 몇 배인지 나타냄.&#10;→ PER 10 = 지금 주가로 10년치 이익을 내야 본전"></textarea>
+          </div>
+        </div>
+        <div class="input-row">
+          <div style="flex:1;"><label class="form-label">실전 활용 예시</label>
+            <input class="inp inp-xl" id="tm-example" placeholder="삼성전자 PER 12 → 동종업종 평균 15 대비 저평가 가능성 확인" /></div>
+          <div style="display:flex; align-items:flex-end;">
+            <button class="btn btn-primary" onclick="addTerm()">추가</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="kd-search">
+      <input class="kd-search-input" id="tm-search" oninput="renderTerms()" placeholder="🔍 용어·약어·정의 검색..." />
+      <select class="inp" id="tm-filter-cat" onchange="renderTerms()" style="width:150px;">
+        <option value="ALL">전체</option>
+        <option>재무지표</option><option>기술적분석</option>
+        <option>거시경제</option><option>시장구조</option>
+        <option>투자전략</option><option>기타</option>
+      </select>
+    </div>
+
+    <!-- 알파벳·가나다 인덱스 -->
+    <div class="tag-cloud" id="tm-alpha-index" style="margin-bottom:14px;"></div>
+    <div id="tm-list"></div>
+    <div id="tm-empty" class="empty-state" style="display:none;">
+      <div class="empty-icon">🗂</div>
+      <div>아직 등록된 용어가 없습니다.<br>PER부터 시작해보세요!</div>
+    </div>
+  </div>
+
+  <!-- ── 💡 인사이트 ── -->
+  <div class="kd-section" id="kd-insights">
+    <div class="card" style="margin-bottom:16px;">
+      <div class="form-section-hdr">💡 인사이트 추가</div>
+      <div class="card-body">
+        <div class="input-row">
+          <div style="flex:2;"><label class="form-label">출처 (책·뉴스·영상·강의 등)</label>
+            <input class="inp inp-xl" id="is-source" placeholder="Howard Marks 메모 'On Debt' / 삼프로TV 2025-03-20 / 현명한 투자자 4장" /></div>
+          <div><label class="form-label">날짜</label>
+            <input class="inp inp-sm" type="date" id="is-date" /></div>
+          <div><label class="form-label">카테고리</label>
+            <select class="inp inp-sm" id="is-cat">
+              <option>투자 철학</option><option>시장 분석</option>
+              <option>섹터/종목</option><option>매크로</option>
+              <option>리스크</option><option>심리</option><option>기타</option>
+            </select>
+          </div>
+        </div>
+        <div class="input-row">
+          <div style="flex:1;"><label class="form-label">핵심 내용 (깨달은 점, 중요 문장)</label>
+            <textarea class="inp inp-xl" id="is-body" rows="4" placeholder="예) &quot;가장 위험한 것은 리스크가 없다고 느끼는 순간이다&quot; — Howard Marks&#10;&#10;또는: CPI가 예상치보다 0.1%p만 높아도 나스닥이 2% 이상 빠질 수 있다는 걸 실제로 확인함"></textarea>
+          </div>
+        </div>
+        <div class="input-row">
+          <div style="flex:1;"><label class="form-label">나의 투자에 어떻게 적용할 것인가?</label>
+            <input class="inp inp-xl" id="is-apply" placeholder="→ VIX 20 이하일 때 포지션 확대에 더 신중하기로 결정" /></div>
+          <div style="display:flex; align-items:flex-end;">
+            <button class="btn btn-primary" onclick="addInsight()">저장</button>
+          </div>
+        </div>
+        <div class="input-row">
+          <div style="flex:1;"><label class="form-label">태그</label>
+            <input class="inp inp-xl" id="is-tags" placeholder="리스크, 사이클, 심리, VIX" /></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="kd-search">
+      <input class="kd-search-input" id="is-search" oninput="renderInsights()" placeholder="🔍 출처·내용·태그 검색..." />
+      <select class="inp" id="is-filter-cat" onchange="renderInsights()" style="width:150px;">
+        <option value="ALL">전체</option>
+        <option>투자 철학</option><option>시장 분석</option>
+        <option>섹터/종목</option><option>매크로</option>
+        <option>리스크</option><option>심리</option><option>기타</option>
+      </select>
+    </div>
+    <div class="tag-cloud" id="is-tag-cloud"></div>
+    <div id="is-list"></div>
+    <div id="is-empty" class="empty-state" style="display:none;">
+      <div class="empty-icon">💡</div>
+      <div>아직 저장된 인사이트가 없습니다.<br>오늘 배운 것을 첫 번째로 기록해보세요!</div>
+    </div>
+  </div>
 </div>
 
 </main>
@@ -2603,5 +2971,363 @@ function clearResults() {
 // ── 초기화 ──
 renderSourceGrid();
 renderTopicChips();
+
+
+// ══════════════════════════════════════════
+// 📚 지식 창고
+// ══════════════════════════════════════════
+
+// ── 탭 전환 ──
+function switchKdTab(id, btn) {
+  document.querySelectorAll('.kd-tab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.kd-section').forEach(s => s.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('kd-' + id).classList.add('active');
+}
+
+// ── localStorage 헬퍼 ──
+function kdGet(key)      { return JSON.parse(localStorage.getItem('kd_'+key) || '[]'); }
+function kdSet(key, arr) { localStorage.setItem('kd_'+key, JSON.stringify(arr)); }
+
+// ── 태그 파싱 ──
+function parseTags(str) {
+  return str.split(',').map(t=>t.trim()).filter(Boolean);
+}
+
+// ── 태그 클라우드 렌더 ──
+function renderTagCloud(containerId, tags, activeTag, onClickFn) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = '';
+  const all = document.createElement('span');
+  all.className = 'cloud-tag' + (activeTag === 'ALL' ? ' active' : '');
+  all.textContent = '전체';
+  all.onclick = () => onClickFn('ALL');
+  el.appendChild(all);
+  [...new Set(tags)].sort().forEach(tag => {
+    const span = document.createElement('span');
+    span.className = 'cloud-tag' + (activeTag === tag ? ' active' : '');
+    span.textContent = tag;
+    span.onclick = () => onClickFn(tag);
+    el.appendChild(span);
+  });
+}
+
+// ── 삭제 공통 ──
+function kdDelete(key, id, renderFn) {
+  if (!confirm('삭제하시겠습니까?')) return;
+  kdSet(key, kdGet(key).filter(i => i.id !== id));
+  renderFn();
+  updateKdStats();
+}
+
+// ─────────────────────────────────────────
+// 📖 독서 기록
+// ─────────────────────────────────────────
+let bkActiveTag = 'ALL';
+
+function addBook() {
+  const title  = document.getElementById('bk-title').value.trim();
+  const author = document.getElementById('bk-author').value.trim();
+  if (!title) { alert('책 제목을 입력해주세요.'); return; }
+  const item = {
+    id:     Date.now(),
+    title, author,
+    status: document.getElementById('bk-status').value,
+    star:   parseInt(document.getElementById('bk-star').value),
+    icon:   document.getElementById('bk-icon').value.trim() || '📗',
+    memo:   document.getElementById('bk-memo').value.trim(),
+    tags:   parseTags(document.getElementById('bk-tags').value),
+    date:   new Date().toLocaleDateString('ko-KR')
+  };
+  const list = kdGet('books');
+  list.unshift(item);
+  kdSet('books', list);
+  ['bk-title','bk-author','bk-memo','bk-tags','bk-icon'].forEach(id => document.getElementById(id).value = '');
+  renderBooks();
+  updateKdStats();
+}
+
+function renderBooks() {
+  const list    = kdGet('books');
+  const q       = (document.getElementById('bk-search')?.value || '').toLowerCase();
+  const stFil   = document.getElementById('bk-filter-status')?.value || 'ALL';
+  const allTags = list.flatMap(b => b.tags);
+
+  renderTagCloud('bk-tag-cloud', allTags, bkActiveTag, tag => { bkActiveTag = tag; renderBooks(); });
+
+  const filtered = list.filter(b => {
+    const matchQ   = !q || (b.title+b.author+b.memo).toLowerCase().includes(q);
+    const matchSt  = stFil === 'ALL' || b.status === stFil;
+    const matchTag = bkActiveTag === 'ALL' || b.tags.includes(bkActiveTag);
+    return matchQ && matchSt && matchTag;
+  });
+
+  const container = document.getElementById('bk-list');
+  const empty     = document.getElementById('bk-empty');
+  container.innerHTML = '';
+  empty.style.display = filtered.length === 0 ? 'block' : 'none';
+
+  filtered.forEach(b => {
+    const stMap = { done:['status-done','✅ 완독'], reading:['status-reading','📖 읽는중'], todo:['status-todo','📌 예정'] };
+    const [stCls, stLbl] = stMap[b.status] || stMap.todo;
+    const stars = '⭐'.repeat(b.star || 0);
+    const tagsHtml = (b.tags||[]).map(t=>`<span class="rc-tag">${t}</span>`).join('');
+    const div = document.createElement('div');
+    div.className = 'book-card';
+    div.innerHTML = `
+      <div class="book-spine">${b.icon || '📗'}</div>
+      <div class="book-info">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:4px;">
+          <div class="book-title">${b.title}</div>
+          <span class="book-status ${stCls}">${stLbl}</span>
+        </div>
+        ${b.author ? `<div class="book-author">by ${b.author} · ${b.date}</div>` : ''}
+        ${stars ? `<div class="book-stars">${stars}</div>` : ''}
+        ${b.memo ? `<div class="book-memo">${b.memo}</div>` : ''}
+        ${tagsHtml ? `<div class="book-tags">${tagsHtml}</div>` : ''}
+      </div>
+      <div style="flex-shrink:0;">
+        <button class="btn btn-danger btn-sm" onclick="kdDelete('books',${b.id},renderBooks)">삭제</button>
+      </div>
+    `;
+    container.appendChild(div);
+  });
+}
+
+// ─────────────────────────────────────────
+// ✏️ 학습 노트
+// ─────────────────────────────────────────
+let ntActiveTag = 'ALL';
+
+function addNote() {
+  const title = document.getElementById('nt-title').value.trim();
+  const body  = document.getElementById('nt-body').value.trim();
+  if (!title || !body) { alert('제목과 내용을 입력해주세요.'); return; }
+  const item = {
+    id:   Date.now(),
+    title, body,
+    cat:  document.getElementById('nt-cat').value,
+    tags: parseTags(document.getElementById('nt-tags').value),
+    date: new Date().toLocaleDateString('ko-KR')
+  };
+  const list = kdGet('notes');
+  list.unshift(item);
+  kdSet('notes', list);
+  ['nt-title','nt-body','nt-tags'].forEach(id => document.getElementById(id).value = '');
+  renderNotes();
+  updateKdStats();
+}
+
+function renderNotes() {
+  const list  = kdGet('notes');
+  const q     = (document.getElementById('nt-search')?.value || '').toLowerCase();
+  const catFil = document.getElementById('nt-filter-cat')?.value || 'ALL';
+  const allTags = list.flatMap(n => n.tags);
+
+  renderTagCloud('nt-tag-cloud', allTags, ntActiveTag, tag => { ntActiveTag = tag; renderNotes(); });
+
+  const filtered = list.filter(n => {
+    const matchQ   = !q || (n.title+n.body).toLowerCase().includes(q);
+    const matchCat = catFil === 'ALL' || n.cat === catFil;
+    const matchTag = ntActiveTag === 'ALL' || n.tags.includes(ntActiveTag);
+    return matchQ && matchCat && matchTag;
+  });
+
+  const container = document.getElementById('nt-list');
+  const empty     = document.getElementById('nt-empty');
+  container.innerHTML = '';
+  empty.style.display = filtered.length === 0 ? 'block' : 'none';
+
+  filtered.forEach(n => {
+    const tagsHtml = (n.tags||[]).map(t=>`<span class="rc-tag">${t}</span>`).join('');
+    const div = document.createElement('div');
+    div.className = 'note-card';
+    div.innerHTML = `
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
+        <div>
+          <div class="note-title">${n.title}</div>
+          <span class="badge badge-purple" style="font-size:10px;">${n.cat}</span>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="kdDelete('notes',${n.id},renderNotes)">삭제</button>
+      </div>
+      <div class="note-body">${n.body}</div>
+      ${tagsHtml ? `<div class="book-tags" style="margin-top:8px;">${tagsHtml}</div>` : ''}
+      <div class="note-meta">${n.date}</div>
+    `;
+    container.appendChild(div);
+  });
+}
+
+// ─────────────────────────────────────────
+// 🗂 용어 사전
+// ─────────────────────────────────────────
+function addTerm() {
+  const word = document.getElementById('tm-word').value.trim();
+  const def  = document.getElementById('tm-def').value.trim();
+  if (!word || !def) { alert('용어와 정의를 입력해주세요.'); return; }
+  const item = {
+    id: Date.now(),
+    word, def,
+    eng:     document.getElementById('tm-eng').value.trim(),
+    cat:     document.getElementById('tm-cat').value,
+    example: document.getElementById('tm-example').value.trim(),
+    date:    new Date().toLocaleDateString('ko-KR')
+  };
+  const list = kdGet('terms');
+  list.push(item);
+  list.sort((a,b) => a.word.localeCompare(b.word, 'ko'));
+  kdSet('terms', list);
+  ['tm-word','tm-eng','tm-def','tm-example'].forEach(id => document.getElementById(id).value = '');
+  renderTerms();
+  updateKdStats();
+}
+
+function renderTerms() {
+  const list   = kdGet('terms');
+  const q      = (document.getElementById('tm-search')?.value || '').toLowerCase();
+  const catFil = document.getElementById('tm-filter-cat')?.value || 'ALL';
+
+  // 초성 인덱스 생성
+  const firstChars = [...new Set(list.map(t => t.word[0]))].sort((a,b) => a.localeCompare(b,'ko'));
+  const alphaEl = document.getElementById('tm-alpha-index');
+  if (alphaEl) {
+    alphaEl.innerHTML = '';
+    firstChars.forEach(ch => {
+      const span = document.createElement('span');
+      span.className = 'cloud-tag';
+      span.textContent = ch;
+      span.onclick = () => { document.getElementById('tm-search').value = ch; renderTerms(); };
+      alphaEl.appendChild(span);
+    });
+  }
+
+  const filtered = list.filter(t => {
+    const matchQ   = !q || (t.word+t.eng+t.def+t.example).toLowerCase().includes(q);
+    const matchCat = catFil === 'ALL' || t.cat === catFil;
+    return matchQ && matchCat;
+  });
+
+  const container = document.getElementById('tm-list');
+  const empty     = document.getElementById('tm-empty');
+  container.innerHTML = '';
+  empty.style.display = filtered.length === 0 ? 'block' : 'none';
+
+  filtered.forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'term-card';
+    div.innerHTML = `
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+        <div>
+          <span class="term-word">${t.word}</span>
+          ${t.eng ? `<span class="term-eng">${t.eng}</span>` : ''}
+          <span class="badge badge-purple" style="font-size:10px; margin-left:8px;">${t.cat}</span>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="kdDelete('terms',${t.id},renderTerms)">삭제</button>
+      </div>
+      <div class="term-def">${t.def}</div>
+      ${t.example ? `<div class="term-example">📌 ${t.example}</div>` : ''}
+    `;
+    container.appendChild(div);
+  });
+}
+
+// ─────────────────────────────────────────
+// 💡 인사이트
+// ─────────────────────────────────────────
+let isActiveTag = 'ALL';
+
+function addInsight() {
+  const body = document.getElementById('is-body').value.trim();
+  if (!body) { alert('핵심 내용을 입력해주세요.'); return; }
+  const item = {
+    id:     Date.now(),
+    body,
+    source: document.getElementById('is-source').value.trim(),
+    apply:  document.getElementById('is-apply').value.trim(),
+    cat:    document.getElementById('is-cat').value,
+    tags:   parseTags(document.getElementById('is-tags').value),
+    date:   document.getElementById('is-date').value || new Date().toISOString().split('T')[0]
+  };
+  const list = kdGet('insights');
+  list.unshift(item);
+  kdSet('insights', list);
+  ['is-source','is-body','is-apply','is-tags'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('is-date').value = new Date().toISOString().split('T')[0];
+  renderInsights();
+  updateKdStats();
+}
+
+function renderInsights() {
+  const list   = kdGet('insights');
+  const q      = (document.getElementById('is-search')?.value || '').toLowerCase();
+  const catFil = document.getElementById('is-filter-cat')?.value || 'ALL';
+  const allTags = list.flatMap(i => i.tags);
+
+  renderTagCloud('is-tag-cloud', allTags, isActiveTag, tag => { isActiveTag = tag; renderInsights(); });
+
+  const filtered = list.filter(i => {
+    const matchQ   = !q || (i.body+i.source+i.apply+(i.tags||[]).join(' ')).toLowerCase().includes(q);
+    const matchCat = catFil === 'ALL' || i.cat === catFil;
+    const matchTag = isActiveTag === 'ALL' || (i.tags||[]).includes(isActiveTag);
+    return matchQ && matchCat && matchTag;
+  });
+
+  const container = document.getElementById('is-list');
+  const empty     = document.getElementById('is-empty');
+  container.innerHTML = '';
+  empty.style.display = filtered.length === 0 ? 'block' : 'none';
+
+  filtered.forEach(i => {
+    const tagsHtml = (i.tags||[]).map(t=>`<span class="rc-tag">${t}</span>`).join('');
+    const div = document.createElement('div');
+    div.className = 'insight-card';
+    div.innerHTML = `
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px;">
+        <div style="flex:1;">
+          <div class="insight-source">
+            📌 ${i.source || '출처 미기재'} &nbsp;·&nbsp; ${i.date} &nbsp;·&nbsp;
+            <span class="badge badge-gold" style="font-size:10px;">${i.cat}</span>
+          </div>
+          <div class="insight-body">${i.body}</div>
+          ${i.apply ? `<div class="insight-apply">→ 적용: ${i.apply}</div>` : ''}
+          ${tagsHtml ? `<div class="book-tags" style="margin-top:8px;">${tagsHtml}</div>` : ''}
+        </div>
+        <button class="btn btn-danger btn-sm" style="flex-shrink:0;" onclick="kdDelete('insights',${i.id},renderInsights)">삭제</button>
+      </div>
+    `;
+    container.appendChild(div);
+  });
+}
+
+// ── 통계 업데이트 ──
+function updateKdStats() {
+  const el = document.getElementById('kdStats');
+  if (!el) return;
+  const books    = kdGet('books');
+  const notes    = kdGet('notes');
+  const terms    = kdGet('terms');
+  const insights = kdGet('insights');
+  const done     = books.filter(b => b.status === 'done').length;
+  el.innerHTML = `
+    <span class="kd-stat">📖 독서 <strong>${books.length}</strong>권 (완독 ${done})</span>
+    <span class="kd-stat">✏️ 학습 노트 <strong>${notes.length}</strong>개</span>
+    <span class="kd-stat">🗂 용어 <strong>${terms.length}</strong>개</span>
+    <span class="kd-stat">💡 인사이트 <strong>${insights.length}</strong>개</span>
+  `;
+}
+
+// ── 날짜 기본값 ──
+(function() {
+  const el = document.getElementById('is-date');
+  if (el) el.value = new Date().toISOString().split('T')[0];
+})();
+
+// ── 초기 렌더 ──
+renderBooks();
+renderNotes();
+renderTerms();
+renderInsights();
+updateKdStats();
 
 </script>
