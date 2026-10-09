@@ -28,7 +28,9 @@ function toggleRoutine(id) {
 // ✅ 체크리스트 - 날짜별 자동 초기화 + 달성률
 // ══════════════════════════════════════════
 
-const TODAY = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+// 로컬(KST) 날짜 — toISOString()은 UTC라 KST 09:00 전에는 전날로 계산됨
+function ymd(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+const TODAY = ymd(new Date()); // YYYY-MM-DD
 
 // ── 날짜 체크 → 새 날이면 어제 기록 저장 후 초기화 ──
 function checkDailyReset() {
@@ -37,7 +39,7 @@ function checkDailyReset() {
     // 어제 기록 히스토리에 저장
     saveRoutineHistory(lastDate);
     // 체크리스트 초기화
-    ['checklist-morning','checklist-midday','checklist-evening'].forEach(id => {
+    ['checklist-morning','checklist-midday','checklist-evening','rules-today'].forEach(id => {
       localStorage.setItem(id, '{}');
     });
   }
@@ -47,33 +49,21 @@ function checkDailyReset() {
 // ── 루틴 히스토리 저장 ──
 function saveRoutineHistory(date) {
   const history = JSON.parse(localStorage.getItem('routine_history') || '{}');
-  const morningData = JSON.parse(localStorage.getItem('checklist-morning') || '{}');
-  const middayData  = JSON.parse(localStorage.getItem('checklist-midday')  || '{}');
-  const eveningData = JSON.parse(localStorage.getItem('checklist-evening') || '{}');
-
-  const mTotal = 8, dTotal = 6, eTotal = 7; // 항목 수
-  const mDone  = Object.values(morningData).filter(Boolean).length;
-  const dDone  = Object.values(middayData).filter(Boolean).length;
-  const eDone  = Object.values(eveningData).filter(Boolean).length;
-  const total  = mTotal + dTotal + eTotal;
-  const done   = mDone + dDone + eDone;
-  const rate   = Math.round((done / total) * 100);
-
-  history[date] = { rate, morning: Math.round(mDone/mTotal*100), midday: Math.round(dDone/dTotal*100), evening: Math.round(eDone/eTotal*100) };
+  const m = countDone('checklist-morning'), d = countDone('checklist-midday'), ev = countDone('checklist-evening');
+  const pct = (a,b) => b ? Math.round(a/b*100) : 0;
+  const rate = pct(m.done+d.done+ev.done, m.total+d.total+ev.total);
+  const rs = getRuleState();
+  const rulesNg = FORBIDDEN_RULES.filter(r => rs[r]==='ng').length;
+  const rulesOk = FORBIDDEN_RULES.filter(r => rs[r]==='ok').length;
+  history[date] = { rate, morning: pct(m.done,m.total), midday: pct(d.done,d.total), evening: pct(ev.done,ev.total), rulesOk, rulesNg };
   localStorage.setItem('routine_history', JSON.stringify(history));
 }
 
 // ── 오늘 달성률 계산 & UI 업데이트 ──
 function updateRoutineRate() {
-  const mData = JSON.parse(localStorage.getItem('checklist-morning') || '{}');
-  const dData = JSON.parse(localStorage.getItem('checklist-midday')  || '{}');
-  const eData = JSON.parse(localStorage.getItem('checklist-evening') || '{}');
-
-  const mTotal = 8, dTotal = 6, eTotal = 7;
-  const mDone  = Object.values(mData).filter(Boolean).length;
-  const dDone  = Object.values(dData).filter(Boolean).length;
-  const eDone  = Object.values(eData).filter(Boolean).length;
-
+  const m = countDone('checklist-morning'), d = countDone('checklist-midday'), ev = countDone('checklist-evening');
+  const mDone = m.done, dDone = d.done, eDone = ev.done;
+  const mTotal = m.total, dTotal = d.total, eTotal = ev.total;
   const mRate = Math.round(mDone / mTotal * 100);
   const dRate = Math.round(dDone / dTotal * 100);
   const eRate = Math.round(eDone / eTotal * 100);
@@ -132,7 +122,7 @@ function updateStreak() {
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
-    const ds = d.toISOString().split('T')[0];
+    const ds = ymd(d);
     if (history[ds] && history[ds].rate >= 50) weekCount++;
   }
 
@@ -158,13 +148,13 @@ function makeChecklist(id, items) {
     const li  = document.createElement('li');
     const chk = document.createElement('input');
     chk.type    = 'checkbox';
-    chk.checked = !!saved[i];
+    chk.checked = !!saved[item];
     if (chk.checked) li.classList.add('checked');
 
     chk.addEventListener('change', () => {
       li.classList.toggle('checked', chk.checked);
       const s = JSON.parse(localStorage.getItem(id) || '{}');
-      s[i] = chk.checked;
+      s[item] = chk.checked;
       localStorage.setItem(id, JSON.stringify(s));
       updateRoutineRate(); // 체크할 때마다 달성률 업데이트
     });
@@ -179,7 +169,7 @@ function makeChecklist(id, items) {
 function resetTodayChecklist() {
   if (!confirm('오늘 체크리스트를 초기화하시겠습니까?\n(기록은 히스토리에 저장됩니다)')) return;
   saveRoutineHistory(TODAY);
-  ['checklist-morning','checklist-midday','checklist-evening'].forEach(id => {
+  ['checklist-morning','checklist-midday','checklist-evening','rules-today'].forEach(id => {
     localStorage.setItem(id, '{}');
   });
   // 화면 갱신
@@ -219,7 +209,7 @@ function showRoutineHistory() {
         </div>
         <span class="history-rate" style="color:${color};">${data.rate}%</span>
         <span style="font-size:11px; color:var(--text3); font-family:var(--mono);">
-          🌅${data.morning||0}% 📈${data.midday||0}% 📝${data.evening||0}%
+          🌅${data.morning||0}% 📈${data.midday||0}% 📝${data.evening||0}%${data.rulesNg ? ` <span style="color:var(--red); font-weight:700;">⛔위반 ${data.rulesNg}</span>` : ''}
         </span>
       </div>
     `;
@@ -231,9 +221,12 @@ function closeRoutineHistory() {
   if (modal) modal.style.display = 'none';
 }
 
-// ── 체크리스트 초기화 함수 ──
-function initChecklists() {
-  makeChecklist('checklist-morning', [
+// ── 체크리스트 항목 정의 (상태는 항목 텍스트를 키로 저장 → 항목 추가/순서변경에 안전) ──
+const ROUTINE_ITEMS = {
+  'checklist-morning': [
+    '코스피/코스닥 지수 20일선 위치 확인',
+    '전일 시장 전체 거래대금 및 외인 현·선물 매매동향 파악',
+    '당일 배팅 사이즈(비중) 결정 — 거래대금 가뭄 시 비중 축소',
     '미국 3대 지수 마감 확인 (DOW, S&P 500, NASDAQ)',
     '어제 미국 시장 섹터별 등락 확인 (FinViz 히트맵)',
     '오늘 경제지표 발표 일정 확인 (Investing.com 캘린더)',
@@ -242,16 +235,16 @@ function initChecklists() {
     '미국 10년물 국채금리 수준 확인',
     '나스닥 선물 / 코스피 선물 방향 확인',
     '오늘 국내 주요 뉴스 헤드라인 10개 훑기',
-  ]);
-  makeChecklist('checklist-midday', [
+  ],
+  'checklist-midday': [
     '장 시작 후 외국인 순매수/순매도 방향 확인 (KRX)',
     '기관 매수 상위 종목 확인',
     '관심 종목 가격 알림 도달 여부 확인',
     '장 초반 급등·급락 종목 이유 파악 (뉴스 확인)',
     '점심 후 환율·외국인 수급 재확인',
     '충동 매매 충동 느낄 경우 → 매수 이유 3가지 써보기',
-  ]);
-  makeChecklist('checklist-evening', [
+  ],
+  'checklist-evening': [
     '오늘 코스피/코스닥 지수 마감 수치와 원인 복기',
     '보유 종목 당일 등락 이유 파악 및 일지 기록',
     '오늘 발표된 경제지표 결과와 시장 반응 복기',
@@ -259,7 +252,57 @@ function initChecklists() {
     '경제 기사 3~5개 읽기 (한국경제 or 매일경제)',
     '학습 콘텐츠 20분 (유튜브·책) 소화',
     '투자 원칙 위반 여부 점검 후 일지 기록',
-  ]);
+  ],
+};
+
+// ── 장 중 절대 금지 룰 (홍인기 룰) — 달성률과 별도로 준수/위반 기록 ──
+const FORBIDDEN_RULES = [
+  '09:30 이전 전일 종가 이탈 D+1 종목 미손절 시 즉시 컷',
+  '지수 하락 폭 대비 상대 열위(더 크게 밀리는 종목) 추가 매수 금지',
+  '1등주 조기 상한가 시 2등주 추격 매매(뇌동) 금지',
+  '14시 이후 이유 없는 지수 급락 시(-2% 이상)가 아니면 오전장 칼질 금지',
+  '단주 매매(1주 단위 반복 체결) 포착 시 즉시 시장가 청산',
+];
+
+function countDone(id) {
+  const saved = JSON.parse(localStorage.getItem(id) || '{}');
+  const items = ROUTINE_ITEMS[id] || [];
+  return { done: items.filter(t => saved[t]).length, total: items.length };
+}
+
+function getRuleState() { return JSON.parse(localStorage.getItem('rules-today') || '{}'); }
+
+function renderRules() {
+  const ul = document.getElementById('rule-list');
+  if (!ul) return;
+  const st = getRuleState();
+  ul.innerHTML = FORBIDDEN_RULES.map((r, i) => {
+    const v = st[r] || '';
+    return `<li class="rule-item ${v==='ok'?'rule-ok':v==='ng'?'rule-ng':''}">
+      <span class="rule-text">⛔ ${r}</span>
+      <span class="rule-btns">
+        <button class="rule-btn ${v==='ok'?'on-ok':''}" onclick="setRule(${i},'ok')">✅ 준수</button>
+        <button class="rule-btn ${v==='ng'?'on-ng':''}" onclick="setRule(${i},'ng')">❌ 위반</button>
+      </span></li>`;
+  }).join('');
+  const ok = FORBIDDEN_RULES.filter(r => st[r]==='ok').length;
+  const ng = FORBIDDEN_RULES.filter(r => st[r]==='ng').length;
+  const p = document.getElementById('rules-progress');
+  if (p) p.textContent = ng ? `위반 ${ng}건 · 준수 ${ok}/${FORBIDDEN_RULES.length}` : `준수 ${ok}/${FORBIDDEN_RULES.length}`;
+}
+
+function setRule(i, val) {
+  const st = getRuleState();
+  const key = FORBIDDEN_RULES[i];
+  st[key] = st[key] === val ? '' : val;   // 같은 버튼 재클릭 시 해제
+  localStorage.setItem('rules-today', JSON.stringify(st));
+  renderRules();
+}
+
+// ── 체크리스트 초기화 함수 ──
+function initChecklists() {
+  Object.entries(ROUTINE_ITEMS).forEach(([id, items]) => makeChecklist(id, items));
+  renderRules();
 }
 
 // 체크리스트 초기화 실행
@@ -501,6 +544,18 @@ tips.forEach(t => {
 // ⭐ 관심종목
 // ══════════════════════════════════════════
 let watchFilter = 'ALL';
+let leaderFilter = 'ALL';
+let ddaySort = false;
+
+// D-Day 계산 (오늘 기준, 로컬 날짜)
+function calcDday(dateStr) {
+  if (!dateStr) return null;
+  const t = new Date(); t.setHours(0,0,0,0);
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const ev = new Date(y, m-1, d);
+  return Math.round((ev - t) / 86400000);
+}
+function ddayLabel(n) { return n === null ? '-' : n === 0 ? 'D-Day' : n > 0 ? 'D-' + n : 'D+' + (-n); }
 
 function getWatchList() {
   return JSON.parse(localStorage.getItem('watchlist') || '[]');
@@ -517,12 +572,19 @@ function addWatchItem() {
   const target = parseFloat(document.getElementById('w-target').value) || null;
   const stop   = parseFloat(document.getElementById('w-stop').value) || null;
   const memo   = document.getElementById('w-memo').value.trim();
+  const event     = document.getElementById('w-event').value.trim();
+  const eventDate = document.getElementById('w-event-date').value;
+  const leader    = document.getElementById('w-leader').value;
+  const tv        = parseFloat(document.getElementById('w-tv').value) || null;
 
   if (!ticker || !name) { alert('종목코드와 종목명은 필수입니다.'); return; }
+  if (leader === '찐대장' && tv !== null && tv < 1000 &&
+      !confirm(`확인 거래대금 ${tv}억 < 1,000억입니다.\n그래도 '찐대장'으로 등록할까요?`)) return;
 
   const item = {
     id: Date.now(),
     ticker, name, market, buy, target, stop, memo,
+    event, eventDate, leader, tv,
     date: new Date().toLocaleDateString('ko-KR'),
     star: false
   };
@@ -532,7 +594,7 @@ function addWatchItem() {
   saveWatchList(list);
   renderWatchList();
 
-  ['w-ticker','w-name','w-buy','w-target','w-stop','w-memo'].forEach(id => {
+  ['w-ticker','w-name','w-buy','w-target','w-stop','w-memo','w-event','w-event-date','w-leader','w-tv'].forEach(id => {
     document.getElementById(id).value = '';
   });
 }
@@ -551,14 +613,27 @@ function toggleStar(id) {
 
 function filterWatch(val, el) {
   watchFilter = val;
-  document.querySelectorAll('#panel-watchlist .filter-chip').forEach(c => c.classList.remove('on'));
+  document.querySelectorAll('#panel-watchlist .filter-chip[data-wf]').forEach(c => c.classList.remove('on'));
   el.classList.add('on');
+  renderWatchList();
+}
+function filterLeader(val, el) {
+  leaderFilter = val;
+  document.querySelectorAll('#panel-watchlist .lf-chip').forEach(c => c.classList.remove('on'));
+  el.classList.add('on');
+  renderWatchList();
+}
+function toggleDdaySort(el) {
+  ddaySort = !ddaySort;
+  el.classList.toggle('on', ddaySort);
   renderWatchList();
 }
 
 function renderWatchList() {
   const list = getWatchList();
-  const filtered = watchFilter === 'ALL' ? list : list.filter(i => i.market === watchFilter);
+  const filtered = list
+    .filter(i => watchFilter === 'ALL' || i.market === watchFilter)
+    .filter(i => leaderFilter === 'ALL' || (i.leader || '') === leaderFilter);
   const tbody = document.getElementById('watch-tbody');
   const empty = document.getElementById('watch-empty');
   document.getElementById('watch-count').textContent = `${filtered.length}개 종목`;
@@ -570,7 +645,16 @@ function renderWatchList() {
   }
   empty.style.display = 'none';
 
-  filtered.sort((a,b) => b.star - a.star).forEach(item => {
+  const dKey = i => { const n = calcDday(i.eventDate); return n === null || n < 0 ? 99999 : n; };
+  filtered.sort((a,b) => ddaySort ? (dKey(a) - dKey(b)) || (b.star - a.star) : b.star - a.star).forEach(item => {
+    const dd = calcDday(item.eventDate);
+    const ddCls = dd === null ? '' : dd < 0 ? 'dday-past' : dd <= 3 ? 'dday-hot' : dd <= 7 ? 'dday-warn' : 'dday-far';
+    const ddHtml = dd === null ? '-' :
+      `<span class="dday-badge ${ddCls}" title="${item.eventDate}">${ddayLabel(dd)}</span>${item.event ? `<div style="font-size:10px; color:var(--text3); margin-top:2px;">${item.event}</div>` : ''}`;
+    const ldHtml = item.leader === '찐대장' ? `<span class="leader-badge leader-1">👑 찐대장</span>`
+      : item.leader === '2~3등주' ? `<span class="leader-badge leader-2">🥈 2~3등</span>`
+      : `<span class="leader-badge leader-0">미검증</span>`;
+    const tvHtml = item.tv ? `<div style="font-size:10px; font-family:var(--mono); color:${item.tv>=1000?'var(--accent)':'var(--text3)'}; margin-top:2px;">${item.tv.toLocaleString()}억</div>` : '';
     const gainPct = item.buy && item.target
       ? (((item.target - item.buy) / item.buy) * 100).toFixed(1)
       : '-';
@@ -590,6 +674,8 @@ function renderWatchList() {
       <td style="font-family:var(--mono)">${item.target ? item.target.toLocaleString() : '-'}</td>
       <td style="font-family:var(--mono)">${item.stop ? item.stop.toLocaleString() : '-'}</td>
       <td style="font-family:var(--mono); ${gainColor}">${gainPct !== '-' ? gainPct + '%' : '-'}</td>
+      <td>${ddHtml}</td>
+      <td>${ldHtml}${tvHtml}</td>
       <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${item.memo}">${item.memo || '-'}</td>
       <td style="font-family:var(--mono); font-size:11px; color:var(--text3)">${item.date}</td>
       <td>
@@ -606,6 +692,88 @@ function renderWatchList() {
 let journalFilter = 'ALL';
 let journalMarketFilter = 'ALL';
 let selectedMood = '';
+let selectedActionTags = new Set();
+let pendingChartBlob = null;
+
+// ── 실전 대응 태그 (다중선택) ──
+function toggleActionTag(btn) {
+  const t = btn.dataset.tag;
+  if (selectedActionTags.has(t)) selectedActionTags.delete(t); else selectedActionTags.add(t);
+  btn.classList.toggle('tag-on', selectedActionTags.has(t));
+}
+
+// ── 차트 이미지: IndexedDB 저장 (localStorage 5MB 한도 회피) ──
+const CHART_DB = 'investlearn_charts';
+function chartDb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(CHART_DB, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('charts');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function chartPut(id, blob) {
+  const db = await chartDb();
+  return new Promise((res, rej) => { const tx = db.transaction('charts','readwrite'); tx.objectStore('charts').put(blob, String(id)); tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
+}
+async function chartGet(id) {
+  const db = await chartDb();
+  return new Promise((res) => { const rq = db.transaction('charts').objectStore('charts').get(String(id)); rq.onsuccess = () => res(rq.result || null); rq.onerror = () => res(null); });
+}
+async function chartDel(id) {
+  try { const db = await chartDb(); db.transaction('charts','readwrite').objectStore('charts').delete(String(id)); } catch(e) {}
+}
+async function chartAll() {
+  const db = await chartDb();
+  return new Promise((res) => {
+    const out = {}; const rq = db.transaction('charts').objectStore('charts').openCursor();
+    rq.onsuccess = () => { const c = rq.result; if (c) { out[c.key] = c.value; c.continue(); } else res(out); };
+    rq.onerror = () => res(out);
+  });
+}
+// 업로드 이미지 축소 (긴 변 1600px, JPEG 0.82) — 영웅문 캡처 1장 ≈ 수백 KB 수준으로
+function compressImage(file, maxSide = 1600, q = 0.82) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob(b => { URL.revokeObjectURL(img.src); b ? res(b) : rej(new Error('압축 실패')); }, 'image/jpeg', q);
+    };
+    img.onerror = () => rej(new Error('이미지를 읽을 수 없습니다'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+async function previewChartFile(ev) {
+  const f = ev.target.files[0];
+  const box = document.getElementById('j-chart-preview');
+  if (!f) return;
+  try {
+    pendingChartBlob = await compressImage(f);
+    const url = URL.createObjectURL(pendingChartBlob);
+    box.innerHTML = `<img src="${url}" /><span>${Math.round(pendingChartBlob.size/1024)}KB</span><button class="btn btn-ghost btn-sm" onclick="clearChartFile()">✕</button>`;
+    box.style.display = 'flex';
+  } catch(e) { alert(e.message); }
+}
+function clearChartFile() {
+  pendingChartBlob = null;
+  const f = document.getElementById('j-chart-file'); if (f) f.value = '';
+  const box = document.getElementById('j-chart-preview'); if (box) { box.innerHTML = ''; box.style.display = 'none'; }
+}
+function openChart(src) {
+  const lb = document.getElementById('chart-lightbox');
+  document.getElementById('chart-lightbox-img').src = src;
+  lb.style.display = 'flex';
+}
+async function loadChartThumbs() {
+  const els = document.querySelectorAll('[data-chart-id]');
+  for (const el of els) {
+    const b = await chartGet(el.dataset.chartId);
+    if (b) { const u = URL.createObjectURL(b); el.innerHTML = `<img src="${u}" onclick="openChart('${u}')" />`; }
+  }
+}
 
 function getJournal() { return JSON.parse(localStorage.getItem('journal') || '[]'); }
 function saveJournal(arr) { localStorage.setItem('journal', JSON.stringify(arr)); }
@@ -680,7 +848,7 @@ function selectMood(btn) {
 // ── 폼 초기화 ──
 function clearJournalForm() {
   ['j-date','j-ticker','j-name','j-qty','j-buy-price','j-sell-price',
-   'j-fee','j-tax','j-entry-reason','j-exit-reason','j-memo'].forEach(id => {
+   'j-fee','j-tax','j-entry-reason','j-exit-reason','j-memo','j-flow','j-volume','j-chart-url'].forEach(id => {
     const el = document.getElementById(id);
     if(el) el.value = '';
   });
@@ -690,6 +858,9 @@ function clearJournalForm() {
   document.querySelectorAll('.mood-btn').forEach(b => {
     b.style.background = ''; b.style.color = ''; b.style.borderColor = '';
   });
+  selectedActionTags.clear();
+  document.querySelectorAll('.action-tag-btn').forEach(b => b.classList.remove('tag-on'));
+  clearChartFile();
   ['calc-amount','calc-pnl-won','calc-pnl-pct'].forEach(id => {
     const el = document.getElementById(id); if(el) { el.textContent = '-'; el.style.color = ''; }
   });
@@ -697,13 +868,20 @@ function clearJournalForm() {
 }
 
 // ── 거래 저장 ──
-function addJournalEntry() {
+async function addJournalEntry() {
   const date     = document.getElementById('j-date')?.value;
   const name     = document.getElementById('j-name')?.value.trim();
   if (!date) { alert('거래일을 선택해주세요.'); return; }
   if (!name) { alert('종목명을 입력해주세요.'); return; }
 
   const type      = document.getElementById('j-type').value;
+  const flow      = document.getElementById('j-flow')?.value || '';
+  const volState  = document.getElementById('j-volume')?.value || '';
+  // 매수는 진입 당시 시장 상황 기록 강제
+  if (type === '매수' && (!flow || !volState)) {
+    alert('매수 기록은 [외인 수급]과 [시장 거래대금] 선택이 필수입니다.');
+    return;
+  }
   const qty       = parseFloat(document.getElementById('j-qty')?.value) || 0;
   const buyPrice  = parseFloat(document.getElementById('j-buy-price')?.value) || 0;
   const sellPrice = parseFloat(document.getElementById('j-sell-price')?.value) || 0;
@@ -737,8 +915,18 @@ function addJournalEntry() {
     exitReason:  document.getElementById('j-exit-reason')?.value.trim() || '',
     memo:        document.getElementById('j-memo')?.value.trim() || '',
     mood:        document.getElementById('j-mood')?.value || '',
+    flow,
+    volState,
+    actionTags:  [...selectedActionTags],
+    chartUrl:    document.getElementById('j-chart-url')?.value.trim() || '',
+    hasChart:    !!pendingChartBlob,
     createdAt:   new Date().toLocaleString('ko-KR')
   };
+
+  if (pendingChartBlob) {
+    try { await chartPut(entry.id, pendingChartBlob); }
+    catch(e) { entry.hasChart = false; alert('차트 이미지 저장 실패: ' + e.message); }
+  }
 
   const list = getJournal();
   list.unshift(entry);
@@ -753,6 +941,7 @@ function addJournalEntry() {
 function deleteJournalEntry(id) {
   if (!confirm('이 거래 기록을 삭제하시겠습니까?')) return;
   saveJournal(getJournal().filter(e => e.id !== id));
+  chartDel(id);
   renderJournal();
   updateJournalStats();
 }
@@ -817,6 +1006,9 @@ function renderJournal() {
         ${e.strategy ? `<span class="memo-badge">${e.strategy}</span>` : ''}
         ${e.sector ? `<span class="memo-badge">${e.sector}</span>` : ''}
         ${e.mood ? `<span class="memo-badge">${e.mood}</span>` : ''}
+        ${(e.actionTags||[]).map(t => `<span class="memo-badge action-badge">${t}</span>`).join('')}
+        ${e.flow ? `<span class="memo-badge mkt-badge ${e.flow==='외인 양매도'?'mkt-bad':e.flow==='외인 양매수'?'mkt-good':''}">${e.flow}</span>` : ''}
+        ${e.volState ? `<span class="memo-badge mkt-badge ${e.volState==='연중 최저치 붕괴'?'mkt-bad':e.volState==='활황'?'mkt-good':''}">💰 ${e.volState}</span>` : ''}
         <span class="journal-meta" style="margin-left:auto;">${e.date}</span>
         <button class="btn btn-danger btn-sm" onclick="deleteJournalEntry(${e.id})">🗑</button>
       </div>
@@ -831,9 +1023,14 @@ function renderJournal() {
       ${e.entryReason ? `<div style="font-size:12px; color:var(--text2); margin-bottom:4px;"><span style="color:var(--accent); font-weight:700;">▶ 진입근거</span> ${e.entryReason}</div>` : ''}
       ${e.exitReason  ? `<div style="font-size:12px; color:var(--text2); margin-bottom:4px;"><span style="color:var(--red); font-weight:700;">▶ 청산근거</span> ${e.exitReason}</div>` : ''}
       ${e.memo        ? `<div style="font-size:12px; color:var(--text3);"><span style="font-weight:700;">📝</span> ${e.memo}</div>` : ''}
+      ${(e.hasChart || e.chartUrl) ? `<div class="journal-charts">
+        ${e.hasChart ? `<div class="chart-thumb" data-chart-id="${e.id}">📷 로딩…</div>` : ''}
+        ${e.chartUrl ? `<div class="chart-thumb"><img src="${e.chartUrl}" onclick="openChart(this.src)" onerror="this.outerHTML='<a href=&quot;${e.chartUrl}&quot; target=&quot;_blank&quot;>🔗 차트 링크</a>'" /></div>` : ''}
+      </div>` : ''}
     `;
     container.appendChild(div);
   });
+  loadChartThumbs();
 }
 
 // ── 종목별 손익 ──
@@ -963,6 +1160,34 @@ function updateJournalStats() {
   if(wrEl)  wrEl.textContent  = (profits.length+losses.length)>0 ? winrate+'%' : '-';
   if(wrBar) wrBar.style.width = winrate+'%';
 
+  // 진입 당시 시장 상황별 성과 (매도건 → 동일 종목 직전 매수건의 상황 매칭)
+  const stateOf = (sell) => {
+    if (sell.flow || sell.volState) return { flow: sell.flow, volState: sell.volState };
+    const key = sell.ticker || sell.name;
+    const buy = list.filter(b => b.type === '매수' && (b.ticker || b.name) === key && (b.date||'') <= (sell.date||''))
+                    .sort((a,b) => (b.date||'').localeCompare(a.date||''))[0];
+    return { flow: buy?.flow || '', volState: buy?.volState || '' };
+  };
+  const closed = sells.filter(e => e.result === 'profit' || e.result === 'loss').map(e => ({ e, st: stateOf(e) }));
+  const groupTable = (field, labels, title) => {
+    const rows = labels.map(lb => {
+      const g = closed.filter(x => (x.st[field] || '미기록') === lb);
+      const w = g.filter(x => x.e.result === 'profit').length;
+      const pnl = g.reduce((a,x) => a + (x.e.pnlWon || 0), 0);
+      if (!g.length) return '';
+      return `<tr><td>${lb}</td><td style="font-family:var(--mono);">${g.length}</td>
+        <td style="font-family:var(--mono);">${Math.round(w/g.length*100)}%</td>
+        <td style="font-family:var(--mono); color:${pnl>=0?'var(--accent)':'var(--red)'};">${(pnl>0?'+':'')+pnl.toLocaleString()}</td></tr>`;
+    }).join('');
+    return `<div style="font-size:12px; font-weight:700; margin-bottom:6px;">${title}</div>` + (rows
+      ? `<table class="watch-table mini-table"><thead><tr><th>상황</th><th>건수</th><th>승률</th><th>실현손익(원)</th></tr></thead><tbody>${rows}</tbody></table>`
+      : `<div style="font-size:12px; color:var(--text3);">데이터 없음</div>`);
+  };
+  const sf = document.getElementById('stat-by-flow');
+  const sv = document.getElementById('stat-by-volume');
+  if (sf) sf.innerHTML = groupTable('flow', ['외인 양매수','외인 양매도','중립','미기록'], '외인 수급');
+  if (sv) sv.innerHTML = groupTable('volState', ['활황','보통','연중 최저치 붕괴','미기록'], '시장 거래대금');
+
   // 이번 주
   const now = new Date();
   const dow = now.getDay();
@@ -995,12 +1220,14 @@ function exportJournalCSV() {
   if (!list.length) { alert('저장된 거래 기록이 없습니다.'); return; }
   const headers = ['거래일','시장','종목코드','종목명','거래유형','수량(주)',
     '매수단가(원)','매도단가(원)','거래금액(원)','수수료(원)','세금(원)',
-    '실현손익(원)','손익률(%)','전략/테마','섹터','진입근거','청산근거','메모','투자심리'];
+    '실현손익(원)','손익률(%)','전략/테마','섹터','진입근거','청산근거','메모','투자심리',
+    '외인수급','시장거래대금','실전대응태그','차트URL'];
   const rows = list.map(e => [
     e.date||'', e.market||'', e.ticker||'', e.name||'', e.type||'',
     e.qty||'', e.buyPrice||'', e.sellPrice||'', e.amount||'',
     e.fee||'', e.tax||'', e.pnlWon!=null?e.pnlWon:'', e.pnl!=null?e.pnl:'',
-    e.strategy||'', e.sector||'', e.entryReason||'', e.exitReason||'', e.memo||'', e.mood||''
+    e.strategy||'', e.sector||'', e.entryReason||'', e.exitReason||'', e.memo||'', e.mood||'',
+    e.flow||'', e.volState||'', (e.actionTags||[]).join(' | '), e.chartUrl||''
   ].map(v => `"${String(v).replace(/"/g,'""')}"`));
   const bom = '\uFEFF';
   const csv = bom + [headers.map(h=>'"'+h+'"').join(','), ...rows.map(r=>r.join(','))].join('\n');
@@ -1041,6 +1268,8 @@ function importJournalCSV(event) {
           result:      v[11]!==''?(parseFloat(v[11])>=0?'profit':'loss'):'hold',
           strategy:    v[13]||'', sector: v[14]||'',
           entryReason: v[15]||'', exitReason: v[16]||'', memo: v[17]||'', mood: v[18]||'',
+          flow: v[19]||'', volState: v[20]||'',
+          actionTags: (v[21]||'').split('|').map(t=>t.trim()).filter(Boolean), chartUrl: v[22]||'',
           createdAt:   new Date().toLocaleString('ko-KR')
         };
         list.push(entry);
@@ -2150,8 +2379,15 @@ function importKnowledge(event) {
 }
 
 // ── 전체 데이터 내보내기 ──
-function exportAll() {
+async function exportAll() {
+  // 차트 이미지(IndexedDB) → dataURL로 백업에 포함
+  const blobs = await chartAll().catch(() => ({}));
+  const charts = {};
+  for (const [k, b] of Object.entries(blobs)) {
+    charts[k] = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); });
+  }
   const data = {
+    charts,
     type: 'full',
     exportedAt: new Date().toLocaleString('ko-KR'),
     version: '1.0',
@@ -2177,7 +2413,7 @@ function importAll(event) {
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
     try {
       const data = JSON.parse(e.target.result);
       if (!confirm(
@@ -2213,6 +2449,13 @@ function importAll(event) {
           ...existing,
           ...(data.journal||[]).filter(i => !existIds.has(i.id))
         ]));
+      }
+
+      // 차트 이미지 복원
+      if (data.charts) {
+        for (const [k, du] of Object.entries(data.charts)) {
+          try { const b = await (await fetch(du)).blob(); await chartPut(k, b); } catch(_) {}
+        }
       }
 
       // 전체 재렌더링

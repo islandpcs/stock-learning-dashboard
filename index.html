@@ -274,6 +274,19 @@
     </div>
   </div>
 
+  <div class="routine-block open rules-block" id="r-rules">
+    <div class="routine-header" onclick="toggleRoutine('r-rules')">
+      <span class="routine-time">09:00 – 15:30</span>
+      <span class="routine-label">⛔ 장 중 절대 금지 행동 (홍인기 룰)</span>
+      <span class="routine-duration">마감 후 준수/위반 체크</span>
+      <span id="rules-progress" style="font-family:var(--mono); font-size:11px; color:var(--red); margin-left:auto; margin-right:8px;"></span>
+      <span class="routine-toggle">▼</span>
+    </div>
+    <div class="routine-body">
+      <ul class="rule-list" id="rule-list"></ul>
+    </div>
+  </div>
+
   <div class="routine-block" id="r3">
     <div class="routine-header" onclick="toggleRoutine('r3')">
       <span class="routine-time">15:30 – 17:30</span>
@@ -644,6 +657,29 @@
         </div>
       </div>
       <div class="input-row">
+        <div>
+          <label class="form-label">이벤트</label>
+          <input class="inp inp-md" id="w-event" placeholder="실적발표 / FOMC / 배당기준일" list="w-event-list" />
+          <datalist id="w-event-list"><option value="실적발표"><option value="FOMC"><option value="배당기준일"></datalist>
+        </div>
+        <div>
+          <label class="form-label">이벤트일</label>
+          <input class="inp inp-sm" id="w-event-date" type="date" />
+        </div>
+        <div>
+          <label class="form-label">대장주 검증</label>
+          <select class="inp inp-md" id="w-leader">
+            <option value="">미검증</option>
+            <option value="찐대장">👑 찐대장 (거래대금 1,000억↑)</option>
+            <option value="2~3등주">🥈 2~3등주 (바지사장)</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">확인 거래대금(억)</label>
+          <input class="inp inp-sm" id="w-tv" type="number" placeholder="1200" />
+        </div>
+      </div>
+      <div class="input-row">
         <div style="flex:1">
           <label class="form-label">관심 이유 / 메모</label>
           <input class="inp inp-xl" id="w-memo" placeholder="매수 이유, 주목 포인트, 리스크 등 자유롭게 기록" />
@@ -658,9 +694,15 @@
   <!-- 필터 -->
   <div class="filter-bar">
     <span style="font-size:12px; color:var(--text3); margin-right:4px;">필터:</span>
-    <span class="filter-chip on" onclick="filterWatch('ALL',this)">전체</span>
-    <span class="filter-chip" onclick="filterWatch('KR',this)">🇰🇷 국내</span>
-    <span class="filter-chip" onclick="filterWatch('US',this)">🇺🇸 미국</span>
+    <span class="filter-chip on" onclick="filterWatch('ALL',this)" data-wf="1">전체</span>
+    <span class="filter-chip" onclick="filterWatch('KR',this)" data-wf="1">🇰🇷 국내</span>
+    <span class="filter-chip" onclick="filterWatch('US',this)" data-wf="1">🇺🇸 미국</span>
+    <span style="width:1px; height:16px; background:var(--border); margin:0 6px;"></span>
+    <span class="filter-chip lf-chip on" onclick="filterLeader('ALL',this)">대장 전체</span>
+    <span class="filter-chip lf-chip" onclick="filterLeader('찐대장',this)">👑 찐대장</span>
+    <span class="filter-chip lf-chip" onclick="filterLeader('2~3등주',this)">🥈 2~3등주</span>
+    <span class="filter-chip lf-chip" onclick="filterLeader('',this)">미검증</span>
+    <span class="filter-chip" id="dday-sort-chip" onclick="toggleDdaySort(this)" style="margin-left:6px;">⏳ D-Day순</span>
     <span style="margin-left:auto; font-size:12px; color:var(--text3);" id="watch-count"></span>
   </div>
 
@@ -675,6 +717,8 @@
           <th>목표가</th>
           <th>손절가</th>
           <th>목표수익률</th>
+          <th>D-Day</th>
+          <th>대장</th>
           <th>메모</th>
           <th>등록일</th>
           <th style="width:60px"></th>
@@ -754,7 +798,8 @@
       </div>
 
       <!-- 행3: 분류 -->
-            <div><label class="form-label">전략/테마</label>
+      <div class="input-row" style="flex-wrap:wrap;">
+        <div><label class="form-label">전략/테마</label>
           <select class="inp inp-md" id="j-strategy">
             <option>D+0</option>
             <option>D+1,2</option>
@@ -786,7 +831,34 @@
             <option>바이오턴어라운드</option>
             <option>화장품</option>
             <option>증권/금융 밸류업</option>
-          </select></div>  <div class="input-row" style="flex-wrap:wrap;">
+          </select></div>
+      </div>
+
+      <!-- 행3-2: 진입 당시 시장 상황 (매수 시 필수) -->
+      <div class="input-row" style="flex-wrap:wrap;">
+        <div><label class="form-label">외인 수급 <span class="req-mark" title="매수 시 필수">*</span></label>
+          <select class="inp inp-md" id="j-flow">
+            <option value="">선택</option>
+            <option>외인 양매수</option>
+            <option>외인 양매도</option>
+            <option>중립</option>
+          </select></div>
+        <div><label class="form-label">시장 거래대금 <span class="req-mark" title="매수 시 필수">*</span></label>
+          <select class="inp inp-md" id="j-volume">
+            <option value="">선택</option>
+            <option>활황</option>
+            <option>보통</option>
+            <option>연중 최저치 붕괴</option>
+          </select></div>
+        <div style="flex:1; min-width:220px;"><label class="form-label">일지차트 (영웅문 매매마킹)</label>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <input class="inp inp-md" id="j-chart-url" placeholder="이미지 URL (선택)" style="flex:1;" />
+            <label class="btn btn-ghost btn-sm" style="margin:0; cursor:pointer; white-space:nowrap;">📷 파일
+              <input type="file" accept="image/*" id="j-chart-file" onchange="previewChartFile(event)" style="display:none;" />
+            </label>
+          </div>
+          <div id="j-chart-preview" class="chart-preview" style="display:none;"></div>
+        </div>
       </div>
 
       <!-- 행4: 진입/청산 근거 -->
@@ -815,6 +887,15 @@
           <button class="btn btn-ghost btn-sm mood-btn" data-mood="😑 뇌동매매" onclick="selectMood(this)">😑 뇌동매매</button>
         </div>
         <input type="hidden" id="j-mood" value="" />
+      </div>
+
+      <!-- 실전 대응 태그 (다중선택) -->
+      <div style="margin-bottom:12px;">
+        <label class="form-label">실전 대응 태그 <span style="color:var(--text3); font-weight:400;">(복수 선택)</span></label>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:4px;" id="action-tag-btns">
+          <button class="btn btn-ghost btn-sm action-tag-btn" data-tag="🔍 단주매매 감지" onclick="toggleActionTag(this)">🔍 단주매매 감지</button>
+          <button class="btn btn-ghost btn-sm action-tag-btn" data-tag="⏱ D+1 타임스톱 준수" onclick="toggleActionTag(this)">⏱ D+1 타임스톱 준수</button>
+        </div>
       </div>
 
       <div style="display:flex; gap:8px; justify-content:flex-end;">
@@ -873,6 +954,13 @@
       </div>
       <div style="height:8px; background:var(--bg4); border-radius:4px; overflow:hidden;">
         <div id="winrate-bar" style="height:8px; background:linear-gradient(90deg,var(--accent),var(--blue)); border-radius:4px; width:0%; transition:width 0.5s;"></div>
+      </div>
+    </div>
+    <div class="card" style="padding:16px; margin-bottom:16px;">
+      <div style="font-size:12px; color:var(--text3); margin-bottom:10px; font-family:var(--mono);">🧭 진입 당시 시장 상황별 성과 <span style="font-weight:400;">(매도건 ← 동일 종목 직전 매수건의 시장 상황 매칭)</span></div>
+      <div class="grid grid-2" style="gap:12px;">
+        <div id="stat-by-flow"></div>
+        <div id="stat-by-volume"></div>
       </div>
     </div>
   </div>
@@ -1279,5 +1367,6 @@
 </main>
 
 <script src="app.js"></script>
+<div id="chart-lightbox" onclick="this.style.display='none'" style="display:none; position:fixed; inset:0; background:#000000cc; z-index:1100; align-items:center; justify-content:center; cursor:zoom-out;"><img id="chart-lightbox-img" style="max-width:95vw; max-height:92vh; border-radius:6px;" /></div>
 </body>
 </html>
