@@ -17,6 +17,7 @@ function switchTab(id) {
   if (id === 'watchlist') renderWatchList();
   // 투자일지 탭 진입 시 재렌더링
   if (id === 'journal') { renderJournal(); updateJournalStats(); }
+  if (id === 'swing') swRender();
 }
 
 // ── 루틴 토글 ──
@@ -2399,6 +2400,7 @@ async function exportAll() {
     // 관심종목 & 투자일지
     watchlist: JSON.parse(localStorage.getItem('watchlist') || '[]'),
     journal:   JSON.parse(localStorage.getItem('journal')   || '[]'),
+    swing:     JSON.parse(localStorage.getItem('swing_journal') || '[]'),
     // 체크리스트
     checklist_morning: JSON.parse(localStorage.getItem('checklist-morning') || '{}'),
     checklist_midday:  JSON.parse(localStorage.getItem('checklist-midday')  || '{}'),
@@ -2451,6 +2453,13 @@ function importAll(event) {
         ]));
       }
 
+      // 스윙일지 병합
+      if (data.swing) {
+        const existing = JSON.parse(localStorage.getItem('swing_journal') || '[]');
+        const existIds = new Set(existing.map(i => i.id));
+        localStorage.setItem('swing_journal', JSON.stringify([...existing, ...data.swing.filter(i => !existIds.has(i.id))]));
+      }
+
       // 차트 이미지 복원
       if (data.charts) {
         for (const [k, du] of Object.entries(data.charts)) {
@@ -2462,6 +2471,7 @@ function importAll(event) {
       renderBooks(); renderNotes(); renderTerms(); renderInsights(); updateKdStats();
       renderWatchList();
       renderJournal(); updateJournalStats();
+      swRender();
       showToast('✅ 전체 데이터를 복원했습니다!');
     } catch(err) {
       alert('파일을 읽는 중 오류가 발생했습니다: ' + err.message);
@@ -2506,4 +2516,373 @@ function showToast(msg) {
   toast.style.opacity = '1';
   clearTimeout(toast._timer);
   toast._timer = setTimeout(() => { toast.style.opacity = '0'; }, 2500);
+}
+// ══════════════════════════════════════════
+// 🌊 단기 스윙 매매일지
+// ══════════════════════════════════════════
+const SW_KEY = 'swing_journal';
+const SW_FEE = 0.0005, SW_TAX = 0.0018; // 투자일지와 동일 요율 (매수·매도 수수료 + 매도 세금)
+let swFilters = { st: 'ALL', tp: 'ALL' };
+let swSignals = new Set();
+
+function swGet() { try { return JSON.parse(localStorage.getItem(SW_KEY) || '[]'); } catch(e) { return []; } }
+function swPut(a) { localStorage.setItem(SW_KEY, JSON.stringify(a)); }
+function swEsc(t) { return String(t ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function swBr(t) { return swEsc(t).replace(/\n/g, '<br>'); }
+function swWon(n) { return n == null || isNaN(n) ? '-' : Math.round(n).toLocaleString() + '원'; }
+function swNum(id) { const v = parseFloat(document.getElementById(id)?.value); return isNaN(v) ? null : v; }
+function swVal(id) { return (document.getElementById(id)?.value || '').trim(); }
+
+// 시가총액(억원) → 원칙 한도(원). 1천억 미만은 원칙에 정의 없음 → null
+function swLimit(capEok) {
+  if (capEok == null) return undefined;
+  if (capEok >= 100000) return 10000000;
+  if (capEok >= 10000)  return 5000000;
+  if (capEok >= 1000)   return 1000000;
+  return null;
+}
+function swCapLabel(capEok) {
+  if (capEok == null) return '-';
+  return capEok >= 10000 ? (capEok / 10000).toFixed(capEok >= 100000 ? 0 : 1).replace(/\.0$/, '') + '조' : capEok.toLocaleString() + '억';
+}
+// 보유 거래일 (주말 제외, 공휴일 미반영): 진입일 다음 날부터 종료일까지
+function swHoldDays(from, to) {
+  if (!from) return null;
+  const a = new Date(from + 'T00:00:00'), b = to ? new Date(to + 'T00:00:00') : new Date(TODAY + 'T00:00:00');
+  let n = 0; const c = new Date(a);
+  while (c < b) { c.setDate(c.getDate() + 1); const w = c.getDay(); if (w !== 0 && w !== 6) n++; }
+  return n;
+}
+function swDaysBetween(from, to) {
+  if (!from || !to) return null;
+  return Math.round((new Date(to + 'T00:00:00') - new Date(from + 'T00:00:00')) / 86400000);
+}
+
+// 레코드 파생값 계산 (저장·표시 공통)
+function swDerive(r) {
+  const entryAmt = (r.entryPrice || 0) * (r.qty || 0);
+  const limit = swLimit(r.cap);
+  const closed = !!(r.exitDate && r.exitPrice);
+  let cost = null, pnl = null, pnlPct = null;
+  if (closed) {
+    const exitAmt = r.exitPrice * r.qty;
+    cost = r.cost != null ? r.cost : Math.round(entryAmt * SW_FEE + exitAmt * SW_FEE + exitAmt * SW_TAX);
+    pnl = Math.round(exitAmt - entryAmt - cost);
+    pnlPct = entryAmt ? +(pnl / entryAmt * 100).toFixed(2) : null;
+  }
+  return {
+    entryAmt, limit, closed, cost, pnl, pnlPct,
+    limitOk: limit ? entryAmt <= limit : null,
+    hold: swHoldDays(r.entryDate, closed ? r.exitDate : null),
+    watchDays: swDaysBetween(r.watchDate, r.entryDate),
+  };
+}
+
+function swReadForm() {
+  return {
+    id: document.getElementById('sw-id').value ? Number(document.getElementById('sw-id').value) : null,
+    name: swVal('sw-name'), ticker: swVal('sw-ticker'), type: swVal('sw-type'),
+    entryDate: swVal('sw-entry-date'), entryPrice: swNum('sw-entry-price'), qty: swNum('sw-qty'),
+    target: swNum('sw-target'), stop: swNum('sw-stop'),
+    watchDate: swVal('sw-watch-date'), q1: swVal('sw-q1'), q2: swVal('sw-q2'),
+    signals: [...swSignals], cap: swNum('sw-cap'),
+    right: swVal('sw-right'), q4: swVal('sw-q4'),
+    exitDate: swVal('sw-exit-date'), exitPrice: swNum('sw-exit-price'), cost: swNum('sw-cost'),
+    exitReason: swVal('sw-exit-reason'),
+    good: swVal('sw-good'), fix: swVal('sw-fix'), rule: swVal('sw-rule'),
+  };
+}
+
+function swSeg(field, btn) {
+  const h = document.getElementById(field);
+  const same = h.value === btn.dataset.v;
+  btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('on'));
+  h.value = same ? '' : btn.dataset.v;
+  if (!same) btn.classList.add('on');
+}
+function swSetSeg(field, v) {
+  document.getElementById(field).value = v || '';
+  document.querySelectorAll('#' + field + '-seg button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+}
+function swSig(btn) {
+  const v = btn.dataset.v;
+  swSignals.has(v) ? swSignals.delete(v) : swSignals.add(v);
+  btn.classList.toggle('tag-on', swSignals.has(v));
+  swSigCount();
+}
+function swSigCount() {
+  const n = swSignals.size, el = document.getElementById('sw-sig-count');
+  if (el) { el.textContent = n ? `${n}/5` : ''; el.style.color = n >= 3 ? 'var(--accent)' : 'var(--text3)'; }
+}
+
+// 실시간 자동 계산
+function swCalc() {
+  const r = swReadForm(), x = swDerive(r);
+  // Q3 한도 판정
+  const lb = document.getElementById('sw-limit-box');
+  if (lb) {
+    if (r.cap == null) { lb.className = 'sw-limit-box'; lb.textContent = '시가총액을 입력하면 원칙 한도와 준수 여부가 자동 판정됩니다.'; }
+    else if (x.limit === null) { lb.className = 'sw-limit-box warn'; lb.innerHTML = `시총 <b>${swCapLabel(r.cap)}</b> — 1천억 미만: 원칙에 한도 정의 없음`; }
+    else {
+      const ratio = x.entryAmt ? (x.entryAmt / x.limit * 100).toFixed(0) : 0;
+      lb.className = 'sw-limit-box ' + (x.entryAmt ? (x.limitOk ? 'ok' : 'ng') : '');
+      lb.innerHTML = `시총 <b>${swCapLabel(r.cap)}</b> → 원칙 한도 <b>${swWon(x.limit)}</b>` +
+        (x.entryAmt ? ` · 집행 <b>${swWon(x.entryAmt)}</b> (${ratio}%) ${x.limitOk ? '✅ 준수' : '❌ 한도 초과'}` : '');
+    }
+  }
+  const c = document.getElementById('sw-calc');
+  if (!c) return;
+  const tgtPct = r.target && r.entryPrice ? ((r.target - r.entryPrice) / r.entryPrice * 100).toFixed(1) : null;
+  const stpPct = r.stop && r.entryPrice ? ((r.stop - r.entryPrice) / r.entryPrice * 100).toFixed(1) : null;
+  const items = [
+    ['진입 금액', x.entryAmt ? swWon(x.entryAmt) : '-'],
+    ['관찰 기간', x.watchDays != null ? x.watchDays + '일' : '-'],
+    tgtPct ? ['목표', (tgtPct > 0 ? '+' : '') + tgtPct + '%'] : null,
+    stpPct ? ['손절', stpPct + '%'] : null,
+    ['보유', x.hold != null ? x.hold + '거래일' + (x.hold > 5 ? ' ⚠️' : '') : '-'],
+    ['손익금', x.pnl != null ? `<span style="color:${x.pnl >= 0 ? 'var(--accent)' : 'var(--red)'}">${x.pnl >= 0 ? '+' : ''}${swWon(x.pnl)}</span>` : '-'],
+    ['손익률', x.pnlPct != null ? `<span style="color:${x.pnlPct >= 0 ? 'var(--accent)' : 'var(--red)'}">${x.pnlPct >= 0 ? '+' : ''}${x.pnlPct}%</span>` : '-'],
+  ].filter(Boolean);
+  c.innerHTML = '📊 ' + items.map(([k, v]) => `<span><span style="color:var(--text3);">${k}</span> <strong>${v}</strong></span>`).join('');
+  const costEl = document.getElementById('sw-cost');
+  if (costEl && x.closed && r.cost == null) costEl.placeholder = x.cost.toLocaleString();
+}
+
+function swClear() {
+  ['sw-id','sw-name','sw-ticker','sw-entry-date','sw-entry-price','sw-qty','sw-target','sw-stop','sw-watch-date',
+   'sw-q1','sw-q2','sw-cap','sw-q4','sw-exit-date','sw-exit-price','sw-cost','sw-exit-reason','sw-good','sw-fix','sw-rule']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const costEl = document.getElementById('sw-cost'); if (costEl) costEl.placeholder = '자동계산';
+  swSetSeg('sw-type', ''); swSetSeg('sw-right', '');
+  swSignals.clear(); document.querySelectorAll('.sw-sig').forEach(b => b.classList.remove('tag-on')); swSigCount();
+  document.getElementById('sw-form-title').textContent = '새 스윙 매매 기록';
+  document.getElementById('sw-edit-badge').style.display = 'none';
+  document.getElementById('sw-save-btn').textContent = '💾 기록 저장';
+  swCalc();
+}
+
+function swSave() {
+  const r = swReadForm();
+  if (!r.name) { alert('종목명을 입력해주세요.'); return; }
+  if (!r.type) { alert('매매 구분(종가베팅/눌림목/돌파)을 선택해주세요.'); return; }
+  if (!r.entryDate || !r.entryPrice || !r.qty) { alert('진입 일자·단가·수량은 필수입니다.'); return; }
+  if ((r.exitDate && !r.exitPrice) || (!r.exitDate && r.exitPrice)) { alert('매도 일자와 단가를 함께 입력해주세요.'); return; }
+  if (r.exitDate && r.exitDate < r.entryDate) { alert('매도 일자가 진입 일자보다 빠릅니다.'); return; }
+  const x = swDerive(r);
+  if (x.limitOk === false &&
+      !confirm(`원칙 한도 ${swWon(x.limit)}를 초과했습니다 (집행 ${swWon(x.entryAmt)}).\n초과 상태로 기록할까요?`)) return;
+
+  const list = swGet();
+  const now = new Date().toLocaleString('ko-KR');
+  if (r.id) {
+    const i = list.findIndex(e => e.id === r.id);
+    if (i >= 0) list[i] = { ...list[i], ...r, updatedAt: now };
+  } else {
+    list.unshift({ ...r, id: Date.now(), createdAt: now });
+  }
+  swPut(list);
+  swClear(); swRender();
+  showToast(r.id ? '✅ 스윙 기록이 수정됐습니다!' : '✅ 스윙 기록이 저장됐습니다!');
+}
+
+function swEdit(id) {
+  const r = swGet().find(e => e.id === id); if (!r) return;
+  swClear();
+  const set = (k, v) => { const el = document.getElementById(k); if (el) el.value = v ?? ''; };
+  set('sw-id', r.id); set('sw-name', r.name); set('sw-ticker', r.ticker);
+  set('sw-entry-date', r.entryDate); set('sw-entry-price', r.entryPrice); set('sw-qty', r.qty);
+  set('sw-target', r.target); set('sw-stop', r.stop);
+  set('sw-watch-date', r.watchDate); set('sw-q1', r.q1); set('sw-q2', r.q2); set('sw-cap', r.cap);
+  set('sw-q4', r.q4); set('sw-exit-date', r.exitDate); set('sw-exit-price', r.exitPrice); set('sw-cost', r.cost);
+  set('sw-exit-reason', r.exitReason); set('sw-good', r.good); set('sw-fix', r.fix); set('sw-rule', r.rule);
+  swSetSeg('sw-type', r.type); swSetSeg('sw-right', r.right);
+  (r.signals || []).forEach(v => swSignals.add(v));
+  document.querySelectorAll('.sw-sig').forEach(b => b.classList.toggle('tag-on', swSignals.has(b.dataset.v))); swSigCount();
+  const x = swDerive(r);
+  document.getElementById('sw-form-title').textContent = `${r.name} ${x.closed ? '기록 수정' : '— 청산·복기 입력'}`;
+  document.getElementById('sw-edit-badge').style.display = '';
+  document.getElementById('sw-save-btn').textContent = '💾 수정 저장';
+  swCalc();
+  document.querySelector('#panel-swing .swing-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function swDelete(id) {
+  if (!confirm('이 스윙 기록을 삭제하시겠습니까?')) return;
+  swPut(swGet().filter(e => e.id !== id)); swRender();
+}
+
+function swFilter(key, val, el) {
+  swFilters[key] = val;
+  document.querySelectorAll('#panel-swing .sw-' + key).forEach(c => c.classList.remove('on'));
+  el.classList.add('on');
+  swRenderList();
+}
+
+// 사용자 템플릿 형식의 마크다운 (Claude 스윙 프로젝트 등에 붙여넣기용)
+function swMarkdown(r) {
+  const x = swDerive(r), fmt = n => n == null ? '' : Number(n).toLocaleString();
+  const lim = x.limit === undefined ? '' : x.limit === null ? '1천억 미만 (원칙 한도 정의 없음)' : swWon(x.limit);
+  const comply = x.limit ? `${swWon(x.entryAmt)} / ${x.limitOk ? '준수' : '초과'} (한도 대비 ${(x.entryAmt / x.limit * 100).toFixed(0)}%)` : swWon(x.entryAmt);
+  return [
+    `### [단기 스윙 매매일지] ${r.name}${r.ticker ? ` (${r.ticker})` : ''}`, '',
+    `1. 기본 정보`,
+    `- 매매 구분: ${r.type || ''}`,
+    `- 진입 일자 / 단가: ${r.entryDate || ''} / ${fmt(r.entryPrice)}원`,
+    `- 체결 수량 / 진입 금액: ${fmt(r.qty)}주 / ${fmt(x.entryAmt)}원`,
+    (r.target || r.stop) ? `- 목표가 / 손절가: ${r.target ? fmt(r.target) + '원' : '-'} / ${r.stop ? fmt(r.stop) + '원' : '-'}` : null, '',
+    `2. 핵심 5대 점검 항목`,
+    `Q1. 언제부터 관찰했는지?`,
+    `- ${r.watchDate ? r.watchDate + (x.watchDays != null ? ` (진입까지 ${x.watchDays}일)` : '') + (r.q1 ? ' — ' : '') : ''}${r.q1 || ''}`, '',
+    `Q2. 지금 매수하는 이유는 무엇인지?`,
+    `- ${(r.q2 || '').replace(/\n/g, '\n  ')}`,
+    (r.signals || []).length ? `- 세력 개입 신호 ${r.signals.length}/5: ${r.signals.join(', ')}` : null, '',
+    `Q3. 종목에 따른 매수 한도는 얼마인지?`,
+    `- 종목 시가총액: ${r.cap != null ? swCapLabel(r.cap) : ''}`,
+    `- 원칙상 최대 한도: ${lim}`,
+    `- 실제 집행 금액 / 비중 준수 여부: ${comply}`, '',
+    `Q4. 매수가 옳았는지? (O / X) ${r.right || ''}`,
+    `- 상세 복기: ${(r.q4 || '').replace(/\n/g, '\n  ')}`, '',
+    `Q5. 결과는?`,
+    `- 매도 일자 / 단가: ${r.exitDate ? `${r.exitDate} / ${fmt(r.exitPrice)}원` : ''}`,
+    `- 최종 손익률 / 손익금: ${x.closed ? `${x.pnlPct >= 0 ? '+' : ''}${x.pnlPct}% / ${x.pnl >= 0 ? '+' : ''}${fmt(x.pnl)}원 (보유 ${x.hold}거래일)` : ''}`,
+    `- 청산 사유: ${r.exitReason || ''}`, '',
+    `3. 피드백 및 다음 행동 원칙`,
+    `- 잘한 점: ${(r.good || '').replace(/\n/g, '\n  ')}`,
+    `- 고쳐야 할 점: ${(r.fix || '').replace(/\n/g, '\n  ')}`,
+    `- 새롭게 추가할 행동 룰: ${(r.rule || '').replace(/\n/g, '\n  ')}`,
+  ].filter(l => l !== null).join('\n');
+}
+function swCopy(id) {
+  const r = swGet().find(e => e.id === id); if (!r) return;
+  const md = swMarkdown(r);
+  const done = () => showToast('📋 마크다운으로 복사했습니다!');
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(md).then(done).catch(() => swCopyFallback(md, done));
+  else swCopyFallback(md, done);
+}
+function swCopyFallback(t, done) {
+  const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); done(); } catch(e) { alert('복사에 실패했습니다.'); }
+  ta.remove();
+}
+
+function swRenderList() {
+  const all = swGet();
+  const list = all.filter(r => {
+    const closed = swDerive(r).closed;
+    return (swFilters.st === 'ALL' || (swFilters.st === 'closed') === closed) && (swFilters.tp === 'ALL' || r.type === swFilters.tp);
+  }).sort((a, b) => (b.entryDate || '').localeCompare(a.entryDate || '') || b.id - a.id);
+  const box = document.getElementById('sw-list'), empty = document.getElementById('sw-empty');
+  if (!box) return;
+  document.getElementById('sw-count').textContent = `${list.length}건`;
+  empty.style.display = list.length ? 'none' : 'block';
+  box.innerHTML = list.map(r => {
+    const x = swDerive(r);
+    const pc = x.pnl == null ? 'var(--text3)' : x.pnl >= 0 ? 'var(--accent)' : 'var(--red)';
+    const status = x.closed
+      ? `<span class="badge" style="font-size:10px; color:${pc}; border:1px solid ${pc}50;">${x.pnlPct >= 0 ? '+' : ''}${x.pnlPct}% · ${x.pnl >= 0 ? '+' : ''}${swWon(x.pnl)}</span>`
+      : `<span class="badge sw-open-badge" style="font-size:10px;">🟡 보유중 ${x.hold}거래일${x.hold > 5 ? ' ⚠️가이드 초과' : ''}</span>`;
+    const row = (k, v) => v ? `<div class="sw-row"><span class="sw-k">${k}</span><span class="sw-v">${v}</span></div>` : '';
+    const limHtml = x.limit === undefined ? '' : x.limit === null
+      ? `${swCapLabel(r.cap)} · <span style="color:var(--gold)">원칙 한도 정의 없음 (1천억 미만)</span>`
+      : `${swCapLabel(r.cap)} → 한도 ${swWon(x.limit)} · 집행 ${swWon(x.entryAmt)} (${(x.entryAmt / x.limit * 100).toFixed(0)}%) ${x.limitOk ? '<span style="color:var(--accent)">✅ 준수</span>' : '<span style="color:var(--red); font-weight:700;">❌ 한도 초과</span>'}`;
+    return `<details class="journal-card sw-card" style="border-left:3px solid ${x.closed ? pc : 'var(--gold)'};">
+      <summary class="journal-card-header" style="flex-wrap:wrap; gap:8px;">
+        <span class="journal-ticker">${swEsc(r.name)}</span>
+        ${r.ticker ? `<span class="journal-meta">${swEsc(r.ticker)}</span>` : ''}
+        <span class="memo-badge">${swEsc(r.type)}</span>
+        ${r.right ? `<span class="memo-badge" style="${r.right === 'O' ? 'color:var(--accent); border-color:var(--accent);' : 'color:var(--red); border-color:var(--red);'}">Q4 ${r.right}</span>` : ''}
+        ${x.limitOk === false ? `<span class="memo-badge mkt-bad">한도 초과</span>` : ''}
+        ${status}
+        <span class="journal-meta" style="margin-left:auto;">${r.entryDate}${r.exitDate ? ' → ' + r.exitDate : ''}</span>
+      </summary>
+      <div class="sw-body">
+        <div class="sw-doc-title">[단기 스윙 매매일지] ${swEsc(r.name)}${r.ticker ? ` (${swEsc(r.ticker)})` : ''}</div>
+        <div class="sw-sec-title">1. 기본 정보</div>
+        ${row('매매 구분', swEsc(r.type))}
+        ${row('진입 일자 / 단가', `${r.entryDate} / ${swWon(r.entryPrice)}`)}
+        ${row('체결 수량 / 진입 금액', `${(r.qty || 0).toLocaleString()}주 / ${swWon(x.entryAmt)}`)}
+        ${(r.target || r.stop) ? row('목표가 / 손절가', `${r.target ? swWon(r.target) : '-'} / ${r.stop ? swWon(r.stop) : '-'}`) : ''}
+        <div class="sw-sec-title">2. 핵심 5대 점검 항목</div>
+        ${row('Q1. 관찰 시작', (r.watchDate ? `${r.watchDate}${x.watchDays != null ? ` (진입까지 ${x.watchDays}일)` : ''}` : '') + (r.q1 ? (r.watchDate ? ' — ' : '') + swBr(r.q1) : ''))}
+        ${row('Q2. 매수 이유', swBr(r.q2) + ((r.signals || []).length ? `<div style="margin-top:4px; font-size:11px; color:var(--text3);">세력 개입 신호 <b style="color:${r.signals.length >= 3 ? 'var(--accent)' : 'var(--text2)'}">${r.signals.length}/5</b>: ${r.signals.join(', ')}</div>` : ''))}
+        ${row('Q3. 매수 한도', limHtml)}
+        ${row('Q4. 매수 옳았나', (r.right ? `<b>${r.right}</b> ` : '') + swBr(r.q4))}
+        ${row('Q5. 결과', x.closed ? `${r.exitDate} / ${swWon(r.exitPrice)} · <b style="color:${pc}">${x.pnlPct >= 0 ? '+' : ''}${x.pnlPct}% / ${x.pnl >= 0 ? '+' : ''}${swWon(x.pnl)}</b> · 보유 ${x.hold}거래일 · 비용 ${swWon(x.cost)}${r.exitReason ? ` · <b>${swEsc(r.exitReason)}</b>` : ''}` : '<span style="color:var(--text3)">보유중 — 청산 후 입력</span>')}
+        ${(r.good || r.fix || r.rule) ? '<div class="sw-sec-title">3. 피드백 및 다음 행동 원칙</div>' : ''}
+        ${row('잘한 점', swBr(r.good))}
+        ${row('고쳐야 할 점', swBr(r.fix))}
+        ${row('새 행동 룰', swBr(r.rule))}
+        <div style="display:flex; gap:6px; justify-content:flex-end; margin-top:10px;">
+          <button class="btn btn-ghost btn-sm" onclick="swCopy(${r.id})">📋 마크다운 복사</button>
+          <button class="btn btn-primary btn-sm" onclick="swEdit(${r.id})">${x.closed ? '✏ 수정' : '✏ 청산·복기 입력'}</button>
+          <button class="btn btn-danger btn-sm" onclick="swDelete(${r.id})">🗑</button>
+        </div>
+      </div>
+    </details>`;
+  }).join('');
+}
+
+function swRenderStats() {
+  const all = swGet().map(r => ({ r, x: swDerive(r) }));
+  const closed = all.filter(o => o.x.closed);
+  const wins = closed.filter(o => o.x.pnl > 0);
+  const sumPnl = closed.reduce((a, o) => a + o.x.pnl, 0);
+  const avgPct = closed.length ? (closed.reduce((a, o) => a + o.x.pnlPct, 0) / closed.length).toFixed(2) : null;
+  const avgHold = closed.length ? (closed.reduce((a, o) => a + o.x.hold, 0) / closed.length).toFixed(1) : null;
+  const rated = all.filter(o => o.r.right);
+  const limRated = all.filter(o => o.x.limitOk !== null);
+  const card = (v, label, color) => `<div class="card" style="text-align:center; padding:14px; ${color ? `border-left:3px solid ${color};` : ''}">
+      <div style="font-family:var(--mono); font-size:22px; font-weight:800; color:${color || 'var(--text)'};">${v}</div>
+      <div style="font-size:12px; color:var(--text3); margin-top:4px;">${label}</div></div>`;
+  const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '-';
+  document.getElementById('sw-stat-cards').innerHTML = [
+    card(`${closed.length}<span style="font-size:13px; color:var(--text3);"> / 보유 ${all.length - closed.length}</span>`, '청산 완료 건'),
+    card(pct(wins.length, closed.length), `승률 (${wins.length}승 ${closed.length - wins.length}패)`, 'var(--accent)'),
+    card(closed.length ? `${sumPnl >= 0 ? '+' : ''}${sumPnl.toLocaleString()}` : '-', `누적 손익금(원) · 평균 ${avgPct != null ? (avgPct >= 0 ? '+' : '') + avgPct + '%' : '-'}`, sumPnl >= 0 ? 'var(--accent)' : 'var(--red)'),
+    card(avgHold != null ? avgHold + '일' : '-', '평균 보유(거래일) · 가이드 3~5', 'var(--blue)'),
+    card(pct(rated.filter(o => o.r.right === 'O').length, rated.length), `Q4 '매수 옳았다(O)' 비율 (${rated.length}건)`, 'var(--purple)'),
+    card(pct(limRated.filter(o => o.x.limitOk).length, limRated.length), `Q3 매수 한도 준수율 (${limRated.length}건)`, 'var(--gold)'),
+    card(pct(closed.filter(o => o.x.hold >= 3 && o.x.hold <= 5).length, closed.length), '보유 3~5거래일 준수율'),
+    card(pct(all.filter(o => (o.r.signals || []).length >= 3).length, all.filter(o => (o.r.signals || []).length).length), '세력 신호 3/5↑ 진입 비율'),
+  ].join('');
+
+  const table = (title, keys, keyFn) => {
+    const rows = keys.map(k => {
+      const g = closed.filter(o => keyFn(o) === k); if (!g.length) return '';
+      const w = g.filter(o => o.x.pnl > 0).length, p = g.reduce((a, o) => a + o.x.pnl, 0);
+      const ap = (g.reduce((a, o) => a + o.x.pnlPct, 0) / g.length).toFixed(2);
+      return `<tr><td>${k}</td><td style="font-family:var(--mono);">${g.length}</td><td style="font-family:var(--mono);">${Math.round(w / g.length * 100)}%</td>
+        <td style="font-family:var(--mono); color:${ap >= 0 ? 'var(--accent)' : 'var(--red)'};">${ap >= 0 ? '+' : ''}${ap}%</td>
+        <td style="font-family:var(--mono); color:${p >= 0 ? 'var(--accent)' : 'var(--red)'};">${p >= 0 ? '+' : ''}${p.toLocaleString()}</td></tr>`;
+    }).join('');
+    return `<div style="font-size:12px; font-weight:700; margin-bottom:6px;">${title}</div>` + (rows
+      ? `<table class="watch-table mini-table"><thead><tr><th>구분</th><th>건수</th><th>승률</th><th>평균</th><th>손익금(원)</th></tr></thead><tbody>${rows}</tbody></table>`
+      : `<div style="font-size:12px; color:var(--text3);">청산 완료 데이터 없음</div>`);
+  };
+  document.getElementById('sw-by-type').innerHTML = table('📂 매매 구분별 성과', ['종가베팅', '눌림목', '돌파'], o => o.r.type);
+  document.getElementById('sw-by-reason').innerHTML = table('🚪 청산 사유별 성과', ['목표가 달성', '거래대금 부진 청산', '손절선 이탈', '미기록'], o => o.r.exitReason || '미기록');
+
+  const rules = swGet().filter(r => r.rule).sort((a, b) => (b.exitDate || b.entryDate || '').localeCompare(a.exitDate || a.entryDate || ''));
+  document.getElementById('sw-rules-all').innerHTML = rules.length
+    ? rules.map(r => r.rule.split('\n').filter(l => l.trim()).map(l =>
+        `<div class="sw-rule-line"><span>➕ ${swEsc(l.replace(/^[-•·]\s*/, ''))}</span><span class="journal-meta">${swEsc(r.name)} · ${r.exitDate || r.entryDate}</span></div>`).join('')).join('')
+    : '<div style="font-size:12px; color:var(--text3);">아직 기록된 행동 룰이 없습니다.</div>';
+}
+
+function swRender() { swRenderStats(); swRenderList(); swCalc(); }
+
+function exportSwingCSV() {
+  const list = swGet();
+  if (!list.length) { alert('저장된 스윙 기록이 없습니다.'); return; }
+  const H = ['종목명','종목코드','매매구분','진입일자','진입단가','수량','진입금액','목표가','손절가','관찰시작일','관찰기간(일)','Q1 관찰','Q2 매수이유','세력신호',
+    '시가총액(억)','원칙한도','한도준수','Q4 O/X','Q4 복기','매도일자','매도단가','수수료+세금','손익금','손익률(%)','보유거래일','청산사유','잘한점','고칠점','새 행동룰'];
+  const rows = list.map(r => { const x = swDerive(r); return [r.name, r.ticker, r.type, r.entryDate, r.entryPrice, r.qty, x.entryAmt, r.target, r.stop,
+    r.watchDate, x.watchDays, r.q1, r.q2, (r.signals || []).join(' | '), r.cap, x.limit, x.limitOk == null ? '' : x.limitOk ? '준수' : '초과',
+    r.right, r.q4, r.exitDate, r.exitPrice, x.cost, x.pnl, x.pnlPct, x.closed ? x.hold : '', r.exitReason, r.good, r.fix, r.rule]
+    .map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','); });
+  const csv = '﻿' + [H.map(h => `"${h}"`).join(','), ...rows].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+  a.download = '스윙일지_' + getDateStr() + '.csv'; a.click();
+  showToast('📥 스윙일지 CSV 내보내기 완료!');
 }

@@ -950,3 +950,35 @@ select.inp { cursor: pointer; }
 .leader-2 { color:var(--text2); }
 .leader-0 { color:var(--text3); border-style:dashed; }
 .mini-table th, .mini-table td { padding:6px 8px; font-size:12px; }
+
+/* ── 🌊 단기 스윙 매매일지 ── */
+.sw-sec-title { font-size:13px; font-weight:800; color:var(--accent); margin:16px 0 8px; padding-bottom:4px; border-bottom:1px solid var(--border); }
+.swing-form .sw-sec-title:first-of-type { margin-top:4px; }
+.sw-after { font-size:10px; font-weight:600; color:var(--text3); background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:1px 6px; margin-left:6px; vertical-align:middle; }
+.sw-q { background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:12px 14px; margin-bottom:10px; }
+.sw-q-head { font-size:13px; font-weight:700; color:var(--text); margin-bottom:8px; }
+.sw-q .input-row { margin-bottom:0; }
+.sw-rule-note { font-size:11px; color:var(--text3); margin-top:6px; font-family:var(--mono); }
+.sw-limit-box { flex:1; min-width:260px; font-size:12px; color:var(--text3); padding:9px 12px; border-radius:6px; border:1px dashed var(--border); background:var(--bg2, #fff); }
+.sw-limit-box.ok { color:var(--text); border:1px solid var(--accent); background:#00c9a70d; }
+.sw-limit-box.ng { color:var(--red); border:1px solid var(--red); background:#d630550d; }
+.sw-limit-box.warn { color:var(--gold); border:1px solid var(--gold); }
+.sw-calc { display:flex; gap:14px; flex-wrap:wrap; align-items:center; font-size:12px; font-family:var(--mono); padding:10px 14px; background:var(--bg3); border:1px solid var(--border); border-radius:8px; margin:4px 0 4px; }
+.seg { display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+.seg button { font-size:12px; font-weight:600; padding:8px 14px; background:var(--bg3); border:none; border-right:1px solid var(--border); color:var(--text2); cursor:pointer; }
+.seg button:last-child { border-right:none; }
+.seg button.on { background:var(--accent); color:#fff; }
+.sw-sig.tag-on { background:var(--purple); border-color:var(--purple); color:#fff; }
+.sw-card summary { cursor:pointer; list-style:none; }
+.sw-card summary::-webkit-details-marker { display:none; }
+.sw-card[open] summary { margin-bottom:6px; }
+.sw-open-badge { color:var(--gold); border:1px solid var(--gold); }
+.sw-body { padding:4px 2px 2px; }
+.sw-doc-title { font-size:14px; font-weight:800; color:var(--text); margin:4px 0 2px; }
+.sw-row { display:flex; gap:12px; padding:6px 0; border-bottom:1px dashed var(--border); font-size:12.5px; line-height:1.6; }
+.sw-row:last-of-type { border-bottom:none; }
+.sw-k { flex:0 0 130px; color:var(--text3); font-weight:600; }
+.sw-v { flex:1; color:var(--text2); min-width:0; word-break:break-word; }
+.sw-rule-line { display:flex; justify-content:space-between; gap:10px; padding:6px 0; border-bottom:1px solid var(--border); font-size:13px; flex-wrap:wrap; }
+.sw-rule-line:last-child { border-bottom:none; }
+@media (max-width:640px) { .sw-row { flex-direction:column; gap:2px; } .sw-k { flex:none; } }

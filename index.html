@@ -63,6 +63,7 @@
     <button class="tab-btn" onclick="switchTab('psychology')" style="font-size:12px; padding:10px 12px;">⑦ 심리</button>
     <button class="tab-btn" onclick="switchTab('watchlist')" style="font-size:12px; padding:10px 12px;">⭐ 관심종목</button>
     <button class="tab-btn" onclick="switchTab('journal')" style="font-size:12px; padding:10px 12px;">📓 투자일지</button>
+    <button class="tab-btn" onclick="switchTab('swing')" style="font-size:12px; padding:10px 12px;">🌊 스윙일지</button>
     <button class="tab-btn" onclick="switchTab('knowledge')" style="font-size:12px; padding:10px 12px;">📚 지식창고</button>
   </div>
 </nav>
@@ -731,6 +732,173 @@
       <div class="empty-icon">⭐</div>
       <div>아직 등록된 관심종목이 없습니다.<br>위 폼에서 첫 종목을 추가해보세요!</div>
     </div>
+  </div>
+</div>
+
+<!-- 🌊 단기 스윙 매매일지 -->
+<div class="tab-panel" id="panel-swing">
+  <div class="section-header" style="display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+    <div>
+      <div class="section-title">🌊 단기 스윙 매매일지</div>
+      <div class="section-desc">진입 시 1·2번(Q1~Q3) 작성 → 청산 후 Q4·Q5·피드백 추가 · 보유 가이드 3~5거래일</div>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="btn btn-ghost btn-sm" onclick="exportSwingCSV()" style="padding:8px 14px;">📥 CSV 내보내기</button>
+    </div>
+  </div>
+
+  <!-- ── 입력 폼 ── -->
+  <div class="card swing-form" style="margin-bottom:16px;">
+    <div class="card-title" style="justify-content:space-between;">
+      <span style="display:flex; align-items:center; gap:8px;"><span class="icon">✏</span> <span id="sw-form-title">새 스윙 매매 기록</span></span>
+      <span id="sw-edit-badge" class="memo-badge" style="display:none;">수정 중</span>
+    </div>
+    <div class="card-body">
+      <input type="hidden" id="sw-id" />
+
+      <!-- 1. 기본 정보 -->
+      <div class="sw-sec-title">1. 기본 정보</div>
+      <div class="input-row" style="flex-wrap:wrap;">
+        <div><label class="form-label">종목명 <span class="req-mark">*</span></label>
+          <input class="inp inp-md" id="sw-name" placeholder="삼성전자" /></div>
+        <div><label class="form-label">종목코드</label>
+          <input class="inp inp-sm" id="sw-ticker" placeholder="005930" /></div>
+        <div><label class="form-label">매매 구분 <span class="req-mark">*</span></label>
+          <div class="seg" id="sw-type-seg">
+            <button type="button" data-v="종가베팅" onclick="swSeg('sw-type',this)">종가베팅</button>
+            <button type="button" data-v="눌림목" onclick="swSeg('sw-type',this)">눌림목</button>
+            <button type="button" data-v="돌파" onclick="swSeg('sw-type',this)">돌파</button>
+          </div>
+          <input type="hidden" id="sw-type" /></div>
+      </div>
+      <div class="input-row" style="flex-wrap:wrap;">
+        <div><label class="form-label">진입 일자 <span class="req-mark">*</span></label>
+          <input class="inp inp-sm" type="date" id="sw-entry-date" oninput="swCalc()" /></div>
+        <div><label class="form-label">진입 단가(원) <span class="req-mark">*</span></label>
+          <input class="inp inp-sm" type="number" id="sw-entry-price" placeholder="70,000" oninput="swCalc()" /></div>
+        <div><label class="form-label">체결 수량(주) <span class="req-mark">*</span></label>
+          <input class="inp inp-sm" type="number" id="sw-qty" placeholder="10" oninput="swCalc()" /></div>
+        <div><label class="form-label">목표가(원)</label>
+          <input class="inp inp-sm" type="number" id="sw-target" placeholder="선택" oninput="swCalc()" /></div>
+        <div><label class="form-label">손절가(원) <span style="font-weight:400; color:var(--text3);">유사 패턴 기준</span></label>
+          <input class="inp inp-sm" type="number" id="sw-stop" placeholder="선택" oninput="swCalc()" /></div>
+      </div>
+
+      <!-- 2. 핵심 5대 점검 -->
+      <div class="sw-sec-title">2. 핵심 5대 점검 항목</div>
+
+      <div class="sw-q">
+        <div class="sw-q-head">Q1. 언제부터 관찰했는지?</div>
+        <div class="input-row" style="flex-wrap:wrap;">
+          <div><label class="form-label">관찰 시작일</label>
+            <input class="inp inp-sm" type="date" id="sw-watch-date" oninput="swCalc()" /></div>
+          <div style="flex:1; min-width:240px;"><label class="form-label">관찰 계기 / 경과</label>
+            <input class="inp inp-xl" id="sw-q1" placeholder="주도섹터 편입 시점, 관심종목 등록 계기 등" /></div>
+        </div>
+      </div>
+
+      <div class="sw-q">
+        <div class="sw-q-head">Q2. 지금 매수하는 이유는 무엇인지?</div>
+        <textarea class="inp inp-xl" id="sw-q2" rows="3" placeholder="차트 근거(눌림 지지/돌파+거래량), 기관 수급, 재료 등"></textarea>
+        <div style="margin-top:8px;">
+          <label class="form-label">세력 개입 신호 체크 <span style="font-weight:400; color:var(--text3);">(선택 · 3/5 이상 = 개입 가능성 높음)</span> <strong id="sw-sig-count" style="font-family:var(--mono);"></strong></label>
+          <div style="display:flex; gap:6px; flex-wrap:wrap;" id="sw-signals">
+            <button type="button" class="btn btn-ghost btn-sm sw-sig" data-v="거래량 급증" onclick="swSig(this)">거래량 급증</button>
+            <button type="button" class="btn btn-ghost btn-sm sw-sig" data-v="구름대 돌파" onclick="swSig(this)">구름대 돌파</button>
+            <button type="button" class="btn btn-ghost btn-sm sw-sig" data-v="골든크로스" onclick="swSig(this)">골든크로스</button>
+            <button type="button" class="btn btn-ghost btn-sm sw-sig" data-v="이평선 지지 반복" onclick="swSig(this)">이평선 지지 반복</button>
+            <button type="button" class="btn btn-ghost btn-sm sw-sig" data-v="수급 연속성" onclick="swSig(this)">수급 연속성</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sw-q">
+        <div class="sw-q-head">Q3. 종목에 따른 매수 한도는 얼마인지?</div>
+        <div class="input-row" style="flex-wrap:wrap; align-items:flex-end;">
+          <div><label class="form-label">종목 시가총액(억원) <span style="font-weight:400; color:var(--text3);">1조=10000</span></label>
+            <input class="inp inp-sm" type="number" id="sw-cap" placeholder="25000" oninput="swCalc()" /></div>
+          <div class="sw-limit-box" id="sw-limit-box">시가총액을 입력하면 원칙 한도와 준수 여부가 자동 판정됩니다.</div>
+        </div>
+        <div class="sw-rule-note">원칙상 최대 한도 — 10조 이상: 1천만 / 1조 이상: 5백만 / 1천억 이상: 1백만</div>
+      </div>
+
+      <div class="sw-q">
+        <div class="sw-q-head">Q4. 매수가 옳았는지? <span class="sw-after">청산 후 작성</span></div>
+        <div class="seg" id="sw-right-seg" style="margin-bottom:8px;">
+          <button type="button" data-v="O" onclick="swSeg('sw-right',this)">⭕ O</button>
+          <button type="button" data-v="X" onclick="swSeg('sw-right',this)">❌ X</button>
+        </div>
+        <input type="hidden" id="sw-right" />
+        <textarea class="inp inp-xl" id="sw-q4" rows="3" placeholder="상세 복기: 진입 타이밍, 근거가 맞았는지, 시장 상황 영향 등"></textarea>
+      </div>
+
+      <div class="sw-q">
+        <div class="sw-q-head">Q5. 결과는? <span class="sw-after">청산 후 작성</span></div>
+        <div class="input-row" style="flex-wrap:wrap;">
+          <div><label class="form-label">매도 일자</label>
+            <input class="inp inp-sm" type="date" id="sw-exit-date" oninput="swCalc()" /></div>
+          <div><label class="form-label">매도 단가(원)</label>
+            <input class="inp inp-sm" type="number" id="sw-exit-price" oninput="swCalc()" /></div>
+          <div><label class="form-label">수수료+세금(원)</label>
+            <input class="inp inp-sm" type="number" id="sw-cost" placeholder="자동계산" oninput="swCalc()" /></div>
+          <div><label class="form-label">청산 사유</label>
+            <select class="inp inp-md" id="sw-exit-reason">
+              <option value="">선택</option>
+              <option>목표가 달성</option>
+              <option>거래대금 부진 청산</option>
+              <option>손절선 이탈</option>
+            </select></div>
+        </div>
+      </div>
+
+      <!-- 자동 계산 -->
+      <div class="sw-calc" id="sw-calc"></div>
+
+      <!-- 3. 피드백 -->
+      <div class="sw-sec-title">3. 피드백 및 다음 행동 원칙 <span class="sw-after">청산 후 작성</span></div>
+      <div class="grid grid-3" style="gap:10px;">
+        <div><label class="form-label">👍 잘한 점</label>
+          <textarea class="inp inp-xl" id="sw-good" rows="3"></textarea></div>
+        <div><label class="form-label">🔧 고쳐야 할 점</label>
+          <textarea class="inp inp-xl" id="sw-fix" rows="3"></textarea></div>
+        <div><label class="form-label">➕ 새롭게 추가할 행동 룰</label>
+          <textarea class="inp inp-xl" id="sw-rule" rows="3" placeholder="한 줄에 하나씩"></textarea></div>
+      </div>
+
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:14px;">
+        <button class="btn btn-ghost" onclick="swClear()">초기화</button>
+        <button class="btn btn-primary" onclick="swSave()" id="sw-save-btn">💾 기록 저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 통계 ── -->
+  <div class="grid grid-4" style="margin-bottom:12px;" id="sw-stat-cards"></div>
+  <div class="grid grid-2" style="gap:12px; margin-bottom:12px;">
+    <div class="card" style="padding:16px;"><div id="sw-by-type"></div></div>
+    <div class="card" style="padding:16px;"><div id="sw-by-reason"></div></div>
+  </div>
+  <div class="card" style="padding:16px; margin-bottom:16px;">
+    <div style="font-size:12px; color:var(--text3); margin-bottom:8px; font-family:var(--mono);">➕ 누적 행동 룰 (각 매매의 '새롭게 추가할 행동 룰' 모음)</div>
+    <div id="sw-rules-all"></div>
+  </div>
+
+  <!-- ── 목록 ── -->
+  <div class="filter-bar">
+    <span style="font-size:12px; color:var(--text3); margin-right:4px;">상태:</span>
+    <span class="filter-chip sw-st on" onclick="swFilter('st','ALL',this)">전체</span>
+    <span class="filter-chip sw-st" onclick="swFilter('st','open',this)">🟡 보유중</span>
+    <span class="filter-chip sw-st" onclick="swFilter('st','closed',this)">✅ 청산</span>
+    <span style="width:1px; height:16px; background:var(--border); margin:0 6px;"></span>
+    <span class="filter-chip sw-tp on" onclick="swFilter('tp','ALL',this)">구분 전체</span>
+    <span class="filter-chip sw-tp" onclick="swFilter('tp','종가베팅',this)">종가베팅</span>
+    <span class="filter-chip sw-tp" onclick="swFilter('tp','눌림목',this)">눌림목</span>
+    <span class="filter-chip sw-tp" onclick="swFilter('tp','돌파',this)">돌파</span>
+    <span style="margin-left:auto; font-size:12px; color:var(--text3);" id="sw-count"></span>
+  </div>
+  <div id="sw-list"></div>
+  <div id="sw-empty" class="empty-state" style="display:none;">
+    <div class="empty-icon">🌊</div><div>아직 스윙 매매 기록이 없습니다.</div>
   </div>
 </div>
 
