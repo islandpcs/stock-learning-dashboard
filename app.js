@@ -2523,6 +2523,7 @@ function showToast(msg) {
 const SW_KEY = 'swing_journal';
 const SW_FEE = 0.0005, SW_TAX = 0.0018; // 투자일지와 동일 요율 (매수·매도 수수료 + 매도 세금)
 let swFilters = { st: 'ALL', tp: 'ALL' };
+const SW_TYPES = ['65기법', '종가 스윙', '7일매매기법', '상승추세절반', '세력힘포착', '기타'];
 let swSignals = new Set();
 
 function swGet() { try { return JSON.parse(localStorage.getItem(SW_KEY) || '[]'); } catch(e) { return []; } }
@@ -2664,7 +2665,7 @@ function swClear() {
 function swSave() {
   const r = swReadForm();
   if (!r.name) { alert('종목명을 입력해주세요.'); return; }
-  if (!r.type) { alert('매매 구분(종가베팅/눌림목/돌파)을 선택해주세요.'); return; }
+  if (!r.type) { alert('매매 구분을 선택해주세요.'); return; }
   if (!r.entryDate || !r.entryPrice || !r.qty) { alert('진입 일자·단가·수량은 필수입니다.'); return; }
   if ((r.exitDate && !r.exitPrice) || (!r.exitDate && r.exitPrice)) { alert('매도 일자와 단가를 함께 입력해주세요.'); return; }
   if (r.exitDate && r.exitDate < r.entryDate) { alert('매도 일자가 진입 일자보다 빠릅니다.'); return; }
@@ -2859,7 +2860,8 @@ function swRenderStats() {
       ? `<table class="watch-table mini-table"><thead><tr><th>구분</th><th>건수</th><th>승률</th><th>평균</th><th>손익금(원)</th></tr></thead><tbody>${rows}</tbody></table>`
       : `<div style="font-size:12px; color:var(--text3);">청산 완료 데이터 없음</div>`);
   };
-  document.getElementById('sw-by-type').innerHTML = table('📂 매매 구분별 성과', ['종가베팅', '눌림목', '돌파'], o => o.r.type);
+  const legacy = [...new Set(closed.map(o => o.r.type).filter(t => t && !SW_TYPES.includes(t)))];
+  document.getElementById('sw-by-type').innerHTML = table('📂 매매 구분별 성과', [...SW_TYPES, ...legacy], o => o.r.type);
   document.getElementById('sw-by-reason').innerHTML = table('🚪 청산 사유별 성과', ['목표가 달성', '거래대금 부진 청산', '손절선 이탈', '미기록'], o => o.r.exitReason || '미기록');
 
   const rules = swGet().filter(r => r.rule).sort((a, b) => (b.exitDate || b.entryDate || '').localeCompare(a.exitDate || a.entryDate || ''));

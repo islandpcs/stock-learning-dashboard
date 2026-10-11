@@ -765,9 +765,12 @@
           <input class="inp inp-sm" id="sw-ticker" placeholder="005930" /></div>
         <div><label class="form-label">매매 구분 <span class="req-mark">*</span></label>
           <div class="seg" id="sw-type-seg">
-            <button type="button" data-v="종가베팅" onclick="swSeg('sw-type',this)">종가베팅</button>
-            <button type="button" data-v="눌림목" onclick="swSeg('sw-type',this)">눌림목</button>
-            <button type="button" data-v="돌파" onclick="swSeg('sw-type',this)">돌파</button>
+            <button type="button" data-v="65기법" onclick="swSeg('sw-type',this)">65기법</button>
+            <button type="button" data-v="종가 스윙" onclick="swSeg('sw-type',this)">종가 스윙</button>
+            <button type="button" data-v="7일매매기법" onclick="swSeg('sw-type',this)">7일매매기법</button>
+            <button type="button" data-v="상승추세절반" onclick="swSeg('sw-type',this)">상승추세절반</button>
+            <button type="button" data-v="세력힘포착" onclick="swSeg('sw-type',this)">세력힘포착</button>
+            <button type="button" data-v="기타" onclick="swSeg('sw-type',this)">기타</button>
           </div>
           <input type="hidden" id="sw-type" /></div>
       </div>
@@ -891,9 +894,12 @@
     <span class="filter-chip sw-st" onclick="swFilter('st','closed',this)">✅ 청산</span>
     <span style="width:1px; height:16px; background:var(--border); margin:0 6px;"></span>
     <span class="filter-chip sw-tp on" onclick="swFilter('tp','ALL',this)">구분 전체</span>
-    <span class="filter-chip sw-tp" onclick="swFilter('tp','종가베팅',this)">종가베팅</span>
-    <span class="filter-chip sw-tp" onclick="swFilter('tp','눌림목',this)">눌림목</span>
-    <span class="filter-chip sw-tp" onclick="swFilter('tp','돌파',this)">돌파</span>
+    <span class="filter-chip sw-tp" onclick="swFilter('tp','65기법',this)">65기법</span>
+    <span class="filter-chip sw-tp" onclick="swFilter('tp','종가 스윙',this)">종가 스윙</span>
+    <span class="filter-chip sw-tp" onclick="swFilter('tp','7일매매기법',this)">7일매매기법</span>
+    <span class="filter-chip sw-tp" onclick="swFilter('tp','상승추세절반',this)">상승추세절반</span>
+    <span class="filter-chip sw-tp" onclick="swFilter('tp','세력힘포착',this)">세력힘포착</span>
+    <span class="filter-chip sw-tp" onclick="swFilter('tp','기타',this)">기타</span>
     <span style="margin-left:auto; font-size:12px; color:var(--text3);" id="sw-count"></span>
   </div>
   <div id="sw-list"></div>
