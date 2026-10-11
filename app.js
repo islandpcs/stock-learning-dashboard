@@ -2531,6 +2531,17 @@ function swPut(a) { localStorage.setItem(SW_KEY, JSON.stringify(a)); }
 function swEsc(t) { return String(t ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function swBr(t) { return swEsc(t).replace(/\n/g, '<br>'); }
 function swWon(n) { return n == null || isNaN(n) ? '-' : Math.round(n).toLocaleString() + '원'; }
+// 진입단가 대비 등락률(%) 문자열
+function swPct(price, entry) {
+  if (!price || !entry) return null;
+  const v = (price - entry) / entry * 100;
+  return (v > 0 ? '+' : '') + v.toFixed(2) + '%';
+}
+function swPriceWithPct(price, entry) {
+  if (!price) return '-';
+  const p = swPct(price, entry);
+  return swWon(price) + (p ? ` (${p})` : '');
+}
 function swNum(id) { const v = parseFloat(document.getElementById(id)?.value); return isNaN(v) ? null : v; }
 function swVal(id) { return (document.getElementById(id)?.value || '').trim(); }
 
@@ -2633,13 +2644,15 @@ function swCalc() {
   }
   const c = document.getElementById('sw-calc');
   if (!c) return;
-  const tgtPct = r.target && r.entryPrice ? ((r.target - r.entryPrice) / r.entryPrice * 100).toFixed(1) : null;
-  const stpPct = r.stop && r.entryPrice ? ((r.stop - r.entryPrice) / r.entryPrice * 100).toFixed(1) : null;
+  [['sw-target-pct', r.target], ['sw-stop-pct', r.stop]].forEach(([id, v]) => {
+    const el = document.getElementById(id); if (!el) return;
+    const p = swPct(v, r.entryPrice);
+    el.textContent = p ? '진입가 대비 ' + p : '';
+    el.style.color = p ? (p.startsWith('-') ? 'var(--red)' : 'var(--accent)') : '';
+  });
   const items = [
     ['진입 금액', x.entryAmt ? swWon(x.entryAmt) : '-'],
     ['관찰 기간', x.watchDays != null ? x.watchDays + '일' : '-'],
-    tgtPct ? ['목표', (tgtPct > 0 ? '+' : '') + tgtPct + '%'] : null,
-    stpPct ? ['손절', stpPct + '%'] : null,
     ['보유', x.hold != null ? x.hold + '거래일' + (x.hold > 5 ? ' ⚠️' : '') : '-'],
     ['손익금', x.pnl != null ? `<span style="color:${x.pnl >= 0 ? 'var(--accent)' : 'var(--red)'}">${x.pnl >= 0 ? '+' : ''}${swWon(x.pnl)}</span>` : '-'],
     ['손익률', x.pnlPct != null ? `<span style="color:${x.pnlPct >= 0 ? 'var(--accent)' : 'var(--red)'}">${x.pnlPct >= 0 ? '+' : ''}${x.pnlPct}%</span>` : '-'],
@@ -2730,7 +2743,7 @@ function swMarkdown(r) {
     `- 매매 구분: ${r.type || ''}`,
     `- 진입 일자 / 단가: ${r.entryDate || ''} / ${fmt(r.entryPrice)}원`,
     `- 체결 수량 / 진입 금액: ${fmt(r.qty)}주 / ${fmt(x.entryAmt)}원`,
-    (r.target || r.stop) ? `- 목표가 / 손절가: ${r.target ? fmt(r.target) + '원' : '-'} / ${r.stop ? fmt(r.stop) + '원' : '-'}` : null, '',
+    (r.target || r.stop) ? `- 목표가 / 손절가: ${swPriceWithPct(r.target, r.entryPrice)} / ${swPriceWithPct(r.stop, r.entryPrice)}` : null, '',
     `2. 핵심 5대 점검 항목`,
     `Q1. 언제부터 관찰했는지?`,
     `- ${r.watchDate ? r.watchDate + (x.watchDays != null ? ` (진입까지 ${x.watchDays}일)` : '') + (r.q1 ? ' — ' : '') : ''}${r.q1 || ''}`, '',
@@ -2802,7 +2815,7 @@ function swRenderList() {
         ${row('매매 구분', swEsc(r.type))}
         ${row('진입 일자 / 단가', `${r.entryDate} / ${swWon(r.entryPrice)}`)}
         ${row('체결 수량 / 진입 금액', `${(r.qty || 0).toLocaleString()}주 / ${swWon(x.entryAmt)}`)}
-        ${(r.target || r.stop) ? row('목표가 / 손절가', `${r.target ? swWon(r.target) : '-'} / ${r.stop ? swWon(r.stop) : '-'}`) : ''}
+        ${(r.target || r.stop) ? row('목표가 / 손절가', `${r.target ? `${swWon(r.target)} <b style="color:var(--accent)">(${swPct(r.target, r.entryPrice)})</b>` : '-'} / ${r.stop ? `${swWon(r.stop)} <b style="color:var(--red)">(${swPct(r.stop, r.entryPrice)})</b>` : '-'}`) : ''}
         <div class="sw-sec-title">2. 핵심 5대 점검 항목</div>
         ${row('Q1. 관찰 시작', (r.watchDate ? `${r.watchDate}${x.watchDays != null ? ` (진입까지 ${x.watchDays}일)` : ''}` : '') + (r.q1 ? (r.watchDate ? ' — ' : '') + swBr(r.q1) : ''))}
         ${row('Q2. 매수 이유', swBr(r.q2) + ((r.signals || []).length ? `<div style="margin-top:4px; font-size:11px; color:var(--text3);">세력 개입 신호 <b style="color:${r.signals.length >= 3 ? 'var(--accent)' : 'var(--text2)'}">${r.signals.length}/5</b>: ${r.signals.join(', ')}</div>` : ''))}
@@ -2876,9 +2889,9 @@ function swRender() { swRenderStats(); swRenderList(); swCalc(); }
 function exportSwingCSV() {
   const list = swGet();
   if (!list.length) { alert('저장된 스윙 기록이 없습니다.'); return; }
-  const H = ['종목명','종목코드','매매구분','진입일자','진입단가','수량','진입금액','목표가','손절가','관찰시작일','관찰기간(일)','Q1 관찰','Q2 매수이유','세력신호',
+  const H = ['종목명','종목코드','매매구분','진입일자','진입단가','수량','진입금액','목표가','목표(%)','손절가','손절(%)','관찰시작일','관찰기간(일)','Q1 관찰','Q2 매수이유','세력신호',
     '시가총액(억)','원칙한도','한도준수','Q4 O/X','Q4 복기','매도일자','매도단가','수수료+세금','손익금','손익률(%)','보유거래일','청산사유','잘한점','고칠점','새 행동룰'];
-  const rows = list.map(r => { const x = swDerive(r); return [r.name, r.ticker, r.type, r.entryDate, r.entryPrice, r.qty, x.entryAmt, r.target, r.stop,
+  const rows = list.map(r => { const x = swDerive(r); return [r.name, r.ticker, r.type, r.entryDate, r.entryPrice, r.qty, x.entryAmt, r.target, swPct(r.target, r.entryPrice), r.stop, swPct(r.stop, r.entryPrice),
     r.watchDate, x.watchDays, r.q1, r.q2, (r.signals || []).join(' | '), r.cap, x.limit, x.limitOk == null ? '' : x.limitOk ? '준수' : '초과',
     r.right, r.q4, r.exitDate, r.exitPrice, x.cost, x.pnl, x.pnlPct, x.closed ? x.hold : '', r.exitReason, r.good, r.fix, r.rule]
     .map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','); });

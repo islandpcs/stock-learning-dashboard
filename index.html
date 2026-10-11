@@ -782,9 +782,11 @@
         <div><label class="form-label">체결 수량(주) <span class="req-mark">*</span></label>
           <input class="inp inp-sm" type="number" id="sw-qty" placeholder="10" oninput="swCalc()" /></div>
         <div><label class="form-label">목표가(원)</label>
-          <input class="inp inp-sm" type="number" id="sw-target" placeholder="선택" oninput="swCalc()" /></div>
+          <input class="inp inp-sm" type="number" id="sw-target" placeholder="선택" oninput="swCalc()" />
+          <div class="sw-pct" id="sw-target-pct"></div></div>
         <div><label class="form-label">손절가(원) <span style="font-weight:400; color:var(--text3);">유사 패턴 기준</span></label>
-          <input class="inp inp-sm" type="number" id="sw-stop" placeholder="선택" oninput="swCalc()" /></div>
+          <input class="inp inp-sm" type="number" id="sw-stop" placeholder="선택" oninput="swCalc()" />
+          <div class="sw-pct" id="sw-stop-pct"></div></div>
       </div>
 
       <!-- 2. 핵심 5대 점검 -->

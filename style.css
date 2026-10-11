@@ -982,3 +982,4 @@ select.inp { cursor: pointer; }
 .sw-rule-line { display:flex; justify-content:space-between; gap:10px; padding:6px 0; border-bottom:1px solid var(--border); font-size:13px; flex-wrap:wrap; }
 .sw-rule-line:last-child { border-bottom:none; }
 @media (max-width:640px) { .sw-row { flex-direction:column; gap:2px; } .sw-k { flex:none; } }
+.sw-pct { font-size:11px; font-family:var(--mono); font-weight:700; margin-top:3px; min-height:14px; }
