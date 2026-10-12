@@ -1009,3 +1009,4 @@ select.inp { cursor: pointer; }
 .seq-badge.seq-buy { color:var(--accent); border-color:var(--accent); }
 .seq-badge.seq-sell { color:#d97706; border-color:#d97706; }
 .seq-badge.seq-final { color:var(--red); border-color:var(--red); font-weight:700; }
+.journal-card.editing { outline:2px solid var(--gold); outline-offset:2px; }

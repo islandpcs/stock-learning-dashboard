@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>주식 투자자 학습 대시보드</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=202610121822">
+<link rel="stylesheet" href="style.css?v=202610122117">
 </head>
 <body>
 
@@ -926,7 +926,9 @@
 
   <!-- ── 새 거래 입력 폼 ── -->
   <div class="card" style="margin-bottom:16px;">
-    <div class="card-title"><div class="icon">✏</div> 새 거래 기록</div>
+    <div class="card-title" id="j-form-card"><div class="icon">✏</div> <span id="j-form-title">새 거래 기록</span>
+      <span id="j-edit-badge" class="memo-badge" style="display:none; margin-left:8px; color:var(--gold); border-color:var(--gold);">수정 중</span></div>
+    <input type="hidden" id="j-edit-id" />
     <div class="card-body">
 
       <!-- 행1: 기본 정보 -->
@@ -1074,8 +1076,8 @@
       </div>
 
       <div style="display:flex; gap:8px; justify-content:flex-end;">
-        <button class="btn btn-ghost" onclick="clearJournalForm()">초기화</button>
-        <button class="btn btn-primary" onclick="addJournalEntry()">💾 거래 저장</button>
+        <button class="btn btn-ghost" onclick="clearJournalForm()" id="j-clear-btn">초기화</button>
+        <button class="btn btn-primary" onclick="addJournalEntry()" id="j-save-btn">💾 거래 저장</button>
       </div>
     </div>
   </div>
@@ -1557,7 +1559,7 @@
 
 </main>
 
-<script src="app.js?v=202610121822"></script>
+<script src="app.js?v=202610122117"></script>
 <div id="chart-lightbox" onclick="this.style.display='none'" style="display:none; position:fixed; inset:0; background:#000000cc; z-index:1100; align-items:center; justify-content:center; cursor:zoom-out;"><img id="chart-lightbox-img" style="max-width:95vw; max-height:92vh; border-radius:6px;" /></div>
 </body>
 </html>

@@ -867,6 +867,15 @@ function clearJournalForm() {
     const el = document.getElementById(id); if(el) { el.textContent = '-'; el.style.color = ''; }
   });
   const bp = document.getElementById('j-buy-price'); if (bp) delete bp.dataset.auto;
+  const moodEl = document.getElementById('j-mood'); if (moodEl) moodEl.value = '';
+  // 수정 모드 해제
+  jRemoveChart = false;
+  document.querySelectorAll('.journal-card.editing').forEach(c => c.classList.remove('editing'));
+  const eid = document.getElementById('j-edit-id'); if (eid) eid.value = '';
+  const t = document.getElementById('j-form-title'); if (t) t.textContent = '새 거래 기록';
+  const eb = document.getElementById('j-edit-badge'); if (eb) eb.style.display = 'none';
+  const sb = document.getElementById('j-save-btn'); if (sb) sb.textContent = '💾 거래 저장';
+  const cb = document.getElementById('j-clear-btn'); if (cb) cb.textContent = '초기화';
   toggleSellFields();
 }
 
@@ -886,7 +895,7 @@ async function addJournalEntry() {
     return;
   }
   if (type === '매도') {
-    const pos = jPosAt(document.getElementById('j-ticker')?.value.trim() || name, date);
+    const pos = jPosAt(document.getElementById('j-ticker')?.value.trim() || name, date, jEditId());
     const q = parseFloat(document.getElementById('j-qty')?.value) || 0;
     if (q > pos.qty && !confirm(`일지 기준 보유 수량(${pos.qty}주)보다 많이 매도합니다.\n일지 이전 보유분이 있다면 그대로 저장해도 됩니다. 저장할까요?`)) return;
   }
@@ -901,8 +910,10 @@ async function addJournalEntry() {
   const pnlPct    = (type==='매도' && buyPrice>0 && sellPrice>0)
     ? parseFloat(((sellPrice-buyPrice)/buyPrice*100).toFixed(2)) : null;
 
+  const editId = jEditId();
+  const prev = editId ? getJournal().find(e => e.id === editId) : null;
   const entry = {
-    id: Date.now(),
+    id: prev ? prev.id : Date.now(),
     date,
     market:      document.getElementById('j-market').value,
     ticker:      document.getElementById('j-ticker')?.value.trim() || '',
@@ -927,22 +938,71 @@ async function addJournalEntry() {
     volState,
     actionTags:  [...selectedActionTags],
     chartUrl:    document.getElementById('j-chart-url')?.value.trim() || '',
-    hasChart:    !!pendingChartBlob,
-    createdAt:   new Date().toLocaleString('ko-KR')
+    hasChart:    !!pendingChartBlob || (!!prev?.hasChart && !jRemoveChart),
+    createdAt:   prev?.createdAt || new Date().toLocaleString('ko-KR'),
+    ...(prev ? { updatedAt: new Date().toLocaleString('ko-KR') } : {})
   };
 
   if (pendingChartBlob) {
     try { await chartPut(entry.id, pendingChartBlob); }
-    catch(e) { entry.hasChart = false; alert('차트 이미지 저장 실패: ' + e.message); }
+    catch(e) { entry.hasChart = !!prev?.hasChart; alert('차트 이미지 저장 실패: ' + e.message); }
+  } else if (prev?.hasChart && jRemoveChart) {
+    chartDel(entry.id);
   }
 
   const list = getJournal();
-  list.unshift(entry);
+  if (prev) list[list.findIndex(e => e.id === prev.id)] = entry;
+  else list.unshift(entry);
   saveJournal(list);
   renderJournal();
   clearJournalForm();
   updateJournalStats();
-  showToast('✅ 거래 기록이 저장됐습니다!');
+  showToast(prev ? '✅ 거래 기록이 수정됐습니다!' : '✅ 거래 기록이 저장됐습니다!');
+  if (prev) document.querySelector(`[data-jid="${prev.id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// ══ 투자일지 수정 ══
+let jRemoveChart = false;
+function jEditId() { const v = document.getElementById('j-edit-id')?.value; return v ? Number(v) : null; }
+
+async function editJournalEntry(id) {
+  const e = getJournal().find(x => x.id === id); if (!e) return;
+  clearJournalForm();
+  const set = (k, v) => { const el = document.getElementById(k); if (el) el.value = v ?? ''; };
+  set('j-edit-id', e.id);
+  set('j-date', e.date); set('j-market', e.market || 'KOSPI'); set('j-ticker', e.ticker); set('j-name', e.name);
+  set('j-type', e.type || '매수');
+  set('j-qty', e.qty || ''); set('j-buy-price', e.buyPrice || ''); set('j-sell-price', e.sellPrice || '');
+  set('j-fee', e.fee ?? ''); set('j-tax', e.tax ?? '');
+  // 목록에 없는 값(예: 예전 전략명)도 그대로 유지되도록 옵션 추가
+  ['j-strategy', 'j-sector'].forEach((id, i) => {
+    const v = i ? e.sector : e.strategy, el = document.getElementById(id);
+    if (el && v && ![...el.options].some(o => o.value === v)) el.add(new Option(v, v));
+    set(id, v || el?.options[0]?.value);
+  });
+  set('j-flow', e.flow); set('j-volume', e.volState);
+  set('j-entry-reason', e.entryReason); set('j-exit-reason', e.exitReason); set('j-memo', e.memo);
+  set('j-chart-url', e.chartUrl);
+  if (e.mood) { const b = [...document.querySelectorAll('.mood-btn')].find(b => b.dataset.mood === e.mood); if (b) selectMood(b); else set('j-mood', e.mood); }
+  (e.actionTags || []).forEach(t => {
+    selectedActionTags.add(t);
+    document.querySelectorAll('.action-tag-btn').forEach(b => { if (b.dataset.tag === t) b.classList.add('tag-on'); });
+  });
+  if (e.hasChart) {
+    const blob = await chartGet(e.id);
+    const box = document.getElementById('j-chart-preview');
+    if (blob && box) {
+      box.innerHTML = `<img src="${URL.createObjectURL(blob)}" /><span>저장된 차트</span><button class="btn btn-ghost btn-sm" onclick="jRemoveChart=true; clearChartFile(); showToast('저장 시 차트 이미지가 삭제됩니다');">✕</button>`;
+      box.style.display = 'flex';
+    }
+  }
+  toggleSellFields();
+  document.getElementById('j-form-title').textContent = `${e.name} · ${e.date} ${e.type} 기록 수정`;
+  document.getElementById('j-edit-badge').style.display = '';
+  document.getElementById('j-save-btn').textContent = '💾 수정 저장';
+  document.getElementById('j-clear-btn').textContent = '수정 취소';
+  document.querySelector(`[data-jid="${e.id}"]`)?.classList.add('editing');
+  document.getElementById('j-form-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ── 삭제 ──
@@ -950,6 +1010,7 @@ function deleteJournalEntry(id) {
   if (!confirm('이 거래 기록을 삭제하시겠습니까?')) return;
   saveJournal(getJournal().filter(e => e.id !== id));
   chartDel(id);
+  if (jEditId() === id) clearJournalForm();
   renderJournal();
   updateJournalStats();
 }
@@ -1006,6 +1067,8 @@ function renderJournal() {
     const typeColor = e.type === '매수' ? 'var(--accent)' : 'var(--red)';
     const div = document.createElement('div');
     div.className = 'journal-card';
+    div.dataset.jid = e.id;
+    if (jEditId() === e.id) div.classList.add('editing');
     div.style.borderLeft = `3px solid ${typeColor}`;
     div.innerHTML = `
       <div class="journal-card-header" style="flex-wrap:wrap; gap:8px;">
@@ -1021,6 +1084,7 @@ function renderJournal() {
         ${e.flow ? `<span class="memo-badge mkt-badge ${e.flow==='외인 양매도'?'mkt-bad':e.flow==='외인 양매수'?'mkt-good':''}">${e.flow}</span>` : ''}
         ${e.volState ? `<span class="memo-badge mkt-badge ${e.volState==='연중 최저치 붕괴'?'mkt-bad':e.volState==='활황'?'mkt-good':''}">💰 ${e.volState}</span>` : ''}
         <span class="journal-meta" style="margin-left:auto;">${e.date}</span>
+        <button class="btn btn-ghost btn-sm" onclick="editJournalEntry(${e.id})" title="수정">✏</button>
         <button class="btn btn-danger btn-sm" onclick="deleteJournalEntry(${e.id})">🗑</button>
       </div>
       <div style="display:flex; gap:16px; flex-wrap:wrap; margin:8px 0; padding:10px 14px; background:var(--bg3); border-radius:8px; font-family:var(--mono); font-size:12px;">
@@ -1081,9 +1145,9 @@ function jPositions(list) {
 }
 
 // 특정 날짜 기준 보유 포지션 (그날 기록분까지 포함)
-function jPosAt(key, date) {
+function jPosAt(key, date, excludeId) {
   key = (key || '').trim();
-  const arr = getJournal().filter(e => jKey(e) === key || (e.name || '').trim() === key)
+  const arr = getJournal().filter(e => e.id !== excludeId && (jKey(e) === key || (e.name || '').trim() === key))
     .filter(e => !date || (e.date || '') <= date).sort(jSortChrono);
   let qty = 0, avg = 0, nb = 0, ns = 0;
   arr.forEach(e => {
@@ -1117,7 +1181,7 @@ function jPosHint() {
   const type = document.getElementById('j-type')?.value;
   const date = document.getElementById('j-date')?.value;
   if (!key) { box.style.display = 'none'; return; }
-  const pos = jPosAt(key, date);
+  const pos = jPosAt(key, date, jEditId());
   const bp = document.getElementById('j-buy-price');
   const q = parseFloat(document.getElementById('j-qty')?.value) || 0;
   let html = '';
@@ -1133,7 +1197,7 @@ function jPosHint() {
         const v = String(Math.round(pos.avg));
         if (bp.value !== v) { bp.value = v; bp.dataset.auto = '1'; calcJournal(); return; }
       }
-      html += ` <span style="color:var(--text3)">· 매수단가에 평단 자동 입력</span>`;
+      if (bp?.dataset.auto === '1') html += ` <span style="color:var(--text3)">· 매수단가에 평단 자동 입력</span>`;
     }
   } else if (pos.count) {
     html = type === '매수' ? `🆕 일지 기준 보유 없음 → 이번 거래: <b class="seq-buy-t">신규매수 1차</b>` : `⚠️ 일지 기준 보유 수량 없음 (일지 이전 보유분이면 매수단가를 직접 입력)`;
