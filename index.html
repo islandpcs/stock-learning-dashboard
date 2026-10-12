@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>주식 투자자 학습 대시보드</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=202610112105">
+<link rel="stylesheet" href="style.css?v=202610121757">
 </head>
 <body>
 
@@ -740,7 +740,7 @@
   <div class="section-header" style="display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px;">
     <div>
       <div class="section-title">🌊 단기 스윙 매매일지</div>
-      <div class="section-desc">진입 시 1·2번(Q1~Q3) 작성 → 청산 후 Q4·Q5·피드백 추가 · 보유 가이드 3~5거래일</div>
+      <div class="section-desc">진입 시 1·2번(Q1~Q3) 작성 → 추가 매수·분할 매도는 카드 버튼으로 차수 기록 → 청산 후 Q4·피드백 · 보유 가이드 3~5거래일</div>
     </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
       <button class="btn btn-ghost btn-sm" onclick="exportSwingCSV()" style="padding:8px 14px;">📥 CSV 내보내기</button>
@@ -774,13 +774,14 @@
           </div>
           <input type="hidden" id="sw-type" /></div>
       </div>
+      <div class="sw-legs">
+        <div class="sw-legs-head">
+          <span>📥 매수 내역 <span style="font-weight:400; color:var(--text3);">(분할매수 · 차수는 날짜순 자동 정렬)</span> <span class="req-mark">*</span></span>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="swAddLeg('buy')">+ 매수 추가</button>
+        </div>
+        <div id="sw-buys"></div>
+      </div>
       <div class="input-row" style="flex-wrap:wrap;">
-        <div><label class="form-label">진입 일자 <span class="req-mark">*</span></label>
-          <input class="inp inp-sm" type="date" id="sw-entry-date" oninput="swCalc()" /></div>
-        <div><label class="form-label">진입 단가(원) <span class="req-mark">*</span></label>
-          <input class="inp inp-sm" type="number" id="sw-entry-price" placeholder="70,000" oninput="swCalc()" /></div>
-        <div><label class="form-label">체결 수량(주) <span class="req-mark">*</span></label>
-          <input class="inp inp-sm" type="number" id="sw-qty" placeholder="10" oninput="swCalc()" /></div>
         <div><label class="form-label">목표가(원)</label>
           <input class="inp inp-sm" type="number" id="sw-target" placeholder="선택" oninput="swCalc()" />
           <div class="sw-pct" id="sw-target-pct"></div></div>
@@ -839,20 +840,16 @@
 
       <div class="sw-q">
         <div class="sw-q-head">Q5. 결과는? <span class="sw-after">청산 후 작성</span></div>
-        <div class="input-row" style="flex-wrap:wrap;">
-          <div><label class="form-label">매도 일자</label>
-            <input class="inp inp-sm" type="date" id="sw-exit-date" oninput="swCalc()" /></div>
-          <div><label class="form-label">매도 단가(원)</label>
-            <input class="inp inp-sm" type="number" id="sw-exit-price" oninput="swCalc()" /></div>
-          <div><label class="form-label">수수료+세금(원)</label>
+        <div class="sw-legs" style="margin:0;">
+          <div class="sw-legs-head">
+            <span>📤 매도 내역 <span style="font-weight:400; color:var(--text3);">(분할매도 · 잔여 0주가 되면 청산 완료)</span></span>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="swAddLeg('sell')">+ 매도 추가</button>
+          </div>
+          <div id="sw-sells"></div>
+        </div>
+        <div class="input-row" style="flex-wrap:wrap; margin-top:8px;">
+          <div><label class="form-label">수수료+세금 합계(원) <span style="font-weight:400; color:var(--text3);">비우면 자동</span></label>
             <input class="inp inp-sm" type="number" id="sw-cost" placeholder="자동계산" oninput="swCalc()" /></div>
-          <div><label class="form-label">청산 사유</label>
-            <select class="inp inp-md" id="sw-exit-reason">
-              <option value="">선택</option>
-              <option>목표가 달성</option>
-              <option>거래대금 부진 청산</option>
-              <option>손절선 이탈</option>
-            </select></div>
         </div>
       </div>
 
@@ -892,7 +889,8 @@
   <div class="filter-bar">
     <span style="font-size:12px; color:var(--text3); margin-right:4px;">상태:</span>
     <span class="filter-chip sw-st on" onclick="swFilter('st','ALL',this)">전체</span>
-    <span class="filter-chip sw-st" onclick="swFilter('st','open',this)">🟡 보유중</span>
+    <span class="filter-chip sw-st" onclick="swFilter('st','holding',this)">🟡 보유중</span>
+    <span class="filter-chip sw-st" onclick="swFilter('st','partial',this)">🟠 부분청산</span>
     <span class="filter-chip sw-st" onclick="swFilter('st','closed',this)">✅ 청산</span>
     <span style="width:1px; height:16px; background:var(--border); margin:0 6px;"></span>
     <span class="filter-chip sw-tp on" onclick="swFilter('tp','ALL',this)">구분 전체</span>
@@ -1542,7 +1540,7 @@
 
 </main>
 
-<script src="app.js?v=202610112105"></script>
+<script src="app.js?v=202610121757"></script>
 <div id="chart-lightbox" onclick="this.style.display='none'" style="display:none; position:fixed; inset:0; background:#000000cc; z-index:1100; align-items:center; justify-content:center; cursor:zoom-out;"><img id="chart-lightbox-img" style="max-width:95vw; max-height:92vh; border-radius:6px;" /></div>
 </body>
 </html>

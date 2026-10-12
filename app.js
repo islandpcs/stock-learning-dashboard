@@ -2518,32 +2518,45 @@ function showToast(msg) {
   toast._timer = setTimeout(() => { toast.style.opacity = '0'; }, 2500);
 }
 // ══════════════════════════════════════════
-// 🌊 단기 스윙 매매일지
+// 🌊 단기 스윙 매매일지 (분할매수·분할매도 지원)
 // ══════════════════════════════════════════
 const SW_KEY = 'swing_journal';
 const SW_FEE = 0.0005, SW_TAX = 0.0018; // 투자일지와 동일 요율 (매수·매도 수수료 + 매도 세금)
-let swFilters = { st: 'ALL', tp: 'ALL' };
 const SW_TYPES = ['65기법', '종가 스윙', '7일매매기법', '상승추세절반', '세력힘포착', '기타'];
+const SW_REASONS = ['목표가 달성', '거래대금 부진 청산', '손절선 이탈'];
+let swFilters = { st: 'ALL', tp: 'ALL' };
 let swSignals = new Set();
 
-function swGet() { try { return JSON.parse(localStorage.getItem(SW_KEY) || '[]'); } catch(e) { return []; } }
-function swPut(a) { localStorage.setItem(SW_KEY, JSON.stringify(a)); }
 function swEsc(t) { return String(t ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function swBr(t) { return swEsc(t).replace(/\n/g, '<br>'); }
 function swWon(n) { return n == null || isNaN(n) ? '-' : Math.round(n).toLocaleString() + '원'; }
-// 진입단가 대비 등락률(%) 문자열
-function swPct(price, entry) {
-  if (!price || !entry) return null;
-  const v = (price - entry) / entry * 100;
-  return (v > 0 ? '+' : '') + v.toFixed(2) + '%';
-}
-function swPriceWithPct(price, entry) {
-  if (!price) return '-';
-  const p = swPct(price, entry);
-  return swWon(price) + (p ? ` (${p})` : '');
-}
+function swSigned(n, unit) { return n == null || isNaN(n) ? '-' : (n > 0 ? '+' : '') + (unit === '%' ? n.toFixed(2) + '%' : Math.round(n).toLocaleString() + '원'); }
 function swNum(id) { const v = parseFloat(document.getElementById(id)?.value); return isNaN(v) ? null : v; }
 function swVal(id) { return (document.getElementById(id)?.value || '').trim(); }
+function swColor(n) { return n == null ? 'var(--text3)' : n >= 0 ? 'var(--accent)' : 'var(--red)'; }
+
+// 기준가 대비 등락률(%) 문자열
+function swPct(price, base) {
+  if (!price || !base) return null;
+  const v = (price - base) / base * 100;
+  return (v > 0 ? '+' : '') + v.toFixed(2) + '%';
+}
+function swPriceWithPct(price, base) {
+  if (!price) return '-';
+  const p = swPct(price, base);
+  return swWon(price) + (p ? ` (${p})` : '');
+}
+
+// 저장소 + 구버전(단일 진입/청산) 레코드 자동 변환
+function swNorm(r) {
+  if (Array.isArray(r.buys)) return r;
+  const n = { ...r, buys: [], sells: [] };
+  if (r.entryDate || r.entryPrice || r.qty) n.buys.push({ date: r.entryDate || '', price: r.entryPrice || null, qty: r.qty || null, memo: '' });
+  if (r.exitDate && r.exitPrice) n.sells.push({ date: r.exitDate, price: r.exitPrice, qty: r.qty || null, reason: r.exitReason || '', memo: '' });
+  return n;
+}
+function swGet() { try { return JSON.parse(localStorage.getItem(SW_KEY) || '[]').map(swNorm); } catch(e) { return []; } }
+function swPut(a) { localStorage.setItem(SW_KEY, JSON.stringify(a)); }
 
 // 시가총액(억원) → 원칙 한도(원). 1천억 미만은 원칙에 정의 없음 → null
 function swLimit(capEok) {
@@ -2557,7 +2570,7 @@ function swCapLabel(capEok) {
   if (capEok == null) return '-';
   return capEok >= 10000 ? (capEok / 10000).toFixed(capEok >= 100000 ? 0 : 1).replace(/\.0$/, '') + '조' : capEok.toLocaleString() + '억';
 }
-// 보유 거래일 (주말 제외, 공휴일 미반영): 진입일 다음 날부터 종료일까지
+// 보유 거래일 (주말 제외, 공휴일 미반영): 시작일 다음 날부터 종료일까지
 function swHoldDays(from, to) {
   if (!from) return null;
   const a = new Date(from + 'T00:00:00'), b = to ? new Date(to + 'T00:00:00') : new Date(TODAY + 'T00:00:00');
@@ -2570,37 +2583,100 @@ function swDaysBetween(from, to) {
   return Math.round((new Date(to + 'T00:00:00') - new Date(from + 'T00:00:00')) / 86400000);
 }
 
-// 레코드 파생값 계산 (저장·표시 공통)
-function swDerive(r) {
-  const entryAmt = (r.entryPrice || 0) * (r.qty || 0);
-  const limit = swLimit(r.cap);
-  const closed = !!(r.exitDate && r.exitPrice);
-  let cost = null, pnl = null, pnlPct = null;
-  if (closed) {
-    const exitAmt = r.exitPrice * r.qty;
-    cost = r.cost != null ? r.cost : Math.round(entryAmt * SW_FEE + exitAmt * SW_FEE + exitAmt * SW_TAX);
-    pnl = Math.round(exitAmt - entryAmt - cost);
-    pnlPct = entryAmt ? +(pnl / entryAmt * 100).toFixed(2) : null;
+// ── 파생값 계산: 날짜순 이동평균단가 방식 (증권사 평균단가와 동일 개념) ──
+function swDerive(r0) {
+  const r = swNorm(r0);
+  const valid = l => l.date && l.price > 0 && l.qty > 0;
+  const buys  = r.buys.filter(valid).map(l => ({ ...l, k: 'b' }));
+  const sells = r.sells.filter(valid).map(l => ({ ...l, k: 's' }));
+  const ev = [...buys, ...sells].sort((a, b) => a.date.localeCompare(b.date) || (a.k === 'b' ? -1 : 1));
+
+  let qty = 0, avg = 0, peak = 0, gross = 0, basisSold = 0, oversell = false;
+  const buyLegs = [], sellLegs = [];
+  for (const e of ev) {
+    if (e.k === 'b') {
+      avg = (avg * qty + e.price * e.qty) / (qty + e.qty);
+      qty += e.qty;
+      peak = Math.max(peak, qty * avg);
+      buyLegs.push({ ...e, n: buyLegs.length + 1, avgAfter: avg, qtyAfter: qty });
+    } else {
+      if (e.qty > qty) oversell = true;
+      const q = Math.min(e.qty, qty);
+      const g = (e.price - avg) * q;
+      gross += g; basisSold += avg * q;
+      sellLegs.push({ ...e, n: sellLegs.length + 1, avgAt: avg, gain: g, pct: avg ? (e.price - avg) / avg * 100 : null, qtyAfter: qty - q });
+      qty -= q;
+      if (qty === 0) avg = 0;
+    }
   }
+  const bought = buys.reduce((a, l) => a + l.qty, 0);
+  const sold   = sells.reduce((a, l) => a + l.qty, 0);
+  const buyAmt  = buys.reduce((a, l) => a + l.price * l.qty, 0);
+  const sellAmt = sells.reduce((a, l) => a + l.price * l.qty, 0);
+  const status = !sellLegs.length ? 'open' : qty > 0 ? 'partial' : 'closed';
+
+  // 비용: 매도분 수수료·세금 전액 + 매수 수수료는 매도된 원가 비율만큼 배분
+  const buyFee = buyAmt * SW_FEE;
+  const autoCost = Math.round(sellAmt * (SW_FEE + SW_TAX) + (buyAmt ? buyFee * Math.min(1, basisSold / buyAmt) : 0));
+  const cost = r.cost != null ? r.cost : autoCost;
+  const pnl = sellLegs.length ? Math.round(gross - cost) : null;
+  const pnlPct = basisSold ? +(pnl / basisSold * 100).toFixed(2) : null;
+
+  const firstBuy = buyLegs[0]?.date || '';
+  const lastSell = sellLegs[sellLegs.length - 1];
+  const avgBuy = bought ? buyAmt / bought : null;
+  const limit = swLimit(r.cap);
   return {
-    entryAmt, limit, closed, cost, pnl, pnlPct,
-    limitOk: limit ? entryAmt <= limit : null,
-    hold: swHoldDays(r.entryDate, closed ? r.exitDate : null),
-    watchDays: swDaysBetween(r.watchDate, r.entryDate),
+    r, buyLegs, sellLegs, bought, sold, remain: qty, avgBuy, avgNow: qty ? avg : null,
+    avgSell: sold ? sellAmt / sold : null, buyAmt, sellAmt, peak, status, closed: status === 'closed',
+    oversell, cost, autoCost, pnl, pnlPct, basisSold, firstBuy,
+    lastSellDate: lastSell?.date || '', exitReason: status === 'closed' ? (lastSell?.reason || '') : '',
+    limit, limitOk: limit ? peak <= limit : null,
+    hold: swHoldDays(firstBuy, status === 'closed' ? lastSell.date : null),
+    watchDays: swDaysBetween(r.watchDate, firstBuy),
   };
+}
+
+// ── 매수/매도 행 UI ──
+function swLegRow(kind, l = {}) {
+  const row = document.createElement('div');
+  row.className = 'sw-leg ' + kind;
+  row.innerHTML = `
+    <span class="sw-leg-n"></span>
+    <input class="inp sw-l-date" type="date" value="${l.date || ''}" oninput="swCalc()" />
+    <input class="inp sw-l-price" type="number" placeholder="${kind === 'buy' ? '매수가' : '매도가'}(원)" value="${l.price ?? ''}" oninput="swCalc()" />
+    <input class="inp sw-l-qty" type="number" placeholder="수량(주)" value="${l.qty ?? ''}" oninput="swCalc()" />
+    ${kind === 'sell' ? `<select class="inp sw-l-reason"><option value="">사유</option>${SW_REASONS.map(o => `<option${l.reason === o ? ' selected' : ''}>${o}</option>`).join('')}</select>` : ''}
+    <input class="inp sw-l-memo" placeholder="${kind === 'buy' ? '근거 (예: 20일선 지지 확인 후 2차)' : '메모 (예: 절반 익절)'}" value="${swEsc(l.memo || '')}" />
+    <span class="sw-leg-info"></span>
+    <button type="button" class="sw-leg-del" title="삭제" onclick="this.parentElement.remove(); swCalc();">✕</button>`;
+  return row;
+}
+function swAddLeg(kind, l) {
+  const box = document.getElementById(kind === 'buy' ? 'sw-buys' : 'sw-sells');
+  const row = swLegRow(kind, l || { date: TODAY });
+  box.appendChild(row);
+  swCalc();
+  return row;
+}
+function swReadLegs(kind) {
+  return [...document.querySelectorAll(`#${kind === 'buy' ? 'sw-buys' : 'sw-sells'} .sw-leg`)].map(row => {
+    const num = c => { const v = parseFloat(row.querySelector(c)?.value); return isNaN(v) ? null : v; };
+    const o = { date: row.querySelector('.sw-l-date').value, price: num('.sw-l-price'), qty: num('.sw-l-qty'), memo: row.querySelector('.sw-l-memo').value.trim() };
+    if (kind === 'sell') o.reason = row.querySelector('.sw-l-reason').value;
+    return o;
+  }).filter(l => l.date || l.price || l.qty || l.memo);
 }
 
 function swReadForm() {
   return {
     id: document.getElementById('sw-id').value ? Number(document.getElementById('sw-id').value) : null,
     name: swVal('sw-name'), ticker: swVal('sw-ticker'), type: swVal('sw-type'),
-    entryDate: swVal('sw-entry-date'), entryPrice: swNum('sw-entry-price'), qty: swNum('sw-qty'),
+    buys: swReadLegs('buy'), sells: swReadLegs('sell'),
     target: swNum('sw-target'), stop: swNum('sw-stop'),
     watchDate: swVal('sw-watch-date'), q1: swVal('sw-q1'), q2: swVal('sw-q2'),
     signals: [...swSignals], cap: swNum('sw-cap'),
-    right: swVal('sw-right'), q4: swVal('sw-q4'),
-    exitDate: swVal('sw-exit-date'), exitPrice: swNum('sw-exit-price'), cost: swNum('sw-cost'),
-    exitReason: swVal('sw-exit-reason'),
+    right: swVal('sw-right'), q4: swVal('sw-q4'), cost: swNum('sw-cost'),
     good: swVal('sw-good'), fix: swVal('sw-fix'), rule: swVal('sw-rule'),
   };
 }
@@ -2627,46 +2703,76 @@ function swSigCount() {
   if (el) { el.textContent = n ? `${n}/5` : ''; el.style.color = n >= 3 ? 'var(--accent)' : 'var(--text3)'; }
 }
 
-// 실시간 자동 계산
+// ── 실시간 자동 계산 ──
 function swCalc() {
   const r = swReadForm(), x = swDerive(r);
-  // Q3 한도 판정
+
+  // 행 번호 + 행별 정보 (날짜순 차수)
+  const fillRows = (kind, legs) => {
+    const rows = [...document.querySelectorAll(`#${kind === 'buy' ? 'sw-buys' : 'sw-sells'} .sw-leg`)];
+    rows.forEach(row => {
+      const d = row.querySelector('.sw-l-date').value, p = parseFloat(row.querySelector('.sw-l-price').value), q = parseFloat(row.querySelector('.sw-l-qty').value);
+      const leg = legs.find(l => l.date === d && l.price === p && l.qty === q && !l._used);
+      const nEl = row.querySelector('.sw-leg-n'), info = row.querySelector('.sw-leg-info');
+      if (leg) {
+        leg._used = true;
+        nEl.textContent = leg.n + '차';
+        info.innerHTML = kind === 'buy'
+          ? `평단 ${Math.round(leg.avgAfter).toLocaleString()} · 보유 ${leg.qtyAfter}주`
+          : `<b style="color:${swColor(leg.gain)}">${swSigned(leg.pct, '%')}</b> · 잔여 ${leg.qtyAfter}주`;
+      } else { nEl.textContent = '–'; info.textContent = ''; }
+    });
+  };
+  fillRows('buy', x.buyLegs); fillRows('sell', x.sellLegs);
+
+  // 목표가·손절가: 평균 매수단가 대비
+  const base = x.avgBuy;
+  [['sw-target-pct', r.target], ['sw-stop-pct', r.stop]].forEach(([id, v]) => {
+    const el = document.getElementById(id); if (!el) return;
+    const p = swPct(v, base);
+    el.textContent = p ? '평단 대비 ' + p : '';
+    el.style.color = p ? (p.startsWith('-') ? 'var(--red)' : 'var(--accent)') : '';
+  });
+
+  // Q3 한도 판정 (최대 보유 원가 기준)
   const lb = document.getElementById('sw-limit-box');
   if (lb) {
     if (r.cap == null) { lb.className = 'sw-limit-box'; lb.textContent = '시가총액을 입력하면 원칙 한도와 준수 여부가 자동 판정됩니다.'; }
     else if (x.limit === null) { lb.className = 'sw-limit-box warn'; lb.innerHTML = `시총 <b>${swCapLabel(r.cap)}</b> — 1천억 미만: 원칙에 한도 정의 없음`; }
     else {
-      const ratio = x.entryAmt ? (x.entryAmt / x.limit * 100).toFixed(0) : 0;
-      lb.className = 'sw-limit-box ' + (x.entryAmt ? (x.limitOk ? 'ok' : 'ng') : '');
+      lb.className = 'sw-limit-box ' + (x.peak ? (x.limitOk ? 'ok' : 'ng') : '');
       lb.innerHTML = `시총 <b>${swCapLabel(r.cap)}</b> → 원칙 한도 <b>${swWon(x.limit)}</b>` +
-        (x.entryAmt ? ` · 집행 <b>${swWon(x.entryAmt)}</b> (${ratio}%) ${x.limitOk ? '✅ 준수' : '❌ 한도 초과'}` : '');
+        (x.peak ? ` · 최대 투입 <b>${swWon(x.peak)}</b> (${(x.peak / x.limit * 100).toFixed(0)}%) ${x.limitOk ? '✅ 준수' : '❌ 한도 초과'}` : '') +
+        (x.buyLegs.length > 1 ? '<span style="color:var(--text3)"> · 분할매수 합산</span>' : '');
     }
   }
+
   const c = document.getElementById('sw-calc');
   if (!c) return;
-  [['sw-target-pct', r.target], ['sw-stop-pct', r.stop]].forEach(([id, v]) => {
-    const el = document.getElementById(id); if (!el) return;
-    const p = swPct(v, r.entryPrice);
-    el.textContent = p ? '진입가 대비 ' + p : '';
-    el.style.color = p ? (p.startsWith('-') ? 'var(--red)' : 'var(--accent)') : '';
-  });
+  const stTxt = { open: '🟡 보유중', partial: '🟠 부분청산', closed: '✅ 청산완료' }[x.status];
   const items = [
-    ['진입 금액', x.entryAmt ? swWon(x.entryAmt) : '-'],
+    ['상태', x.bought ? stTxt : '-'],
+    ['총 매수', x.bought ? `${x.bought}주 · ${swWon(x.buyAmt)}` : '-'],
+    ['평균 매수단가', x.avgBuy ? swWon(x.avgBuy) : '-'],
+    x.sold ? ['총 매도', `${x.sold}주 · 평균 ${swWon(x.avgSell)}`] : null,
+    ['잔여', x.bought ? `${x.remain}주` + (x.avgNow ? ` (평단 ${swWon(x.avgNow)})` : '') : '-'],
     ['관찰 기간', x.watchDays != null ? x.watchDays + '일' : '-'],
     ['보유', x.hold != null ? x.hold + '거래일' + (x.hold > 5 ? ' ⚠️' : '') : '-'],
-    ['손익금', x.pnl != null ? `<span style="color:${x.pnl >= 0 ? 'var(--accent)' : 'var(--red)'}">${x.pnl >= 0 ? '+' : ''}${swWon(x.pnl)}</span>` : '-'],
-    ['손익률', x.pnlPct != null ? `<span style="color:${x.pnlPct >= 0 ? 'var(--accent)' : 'var(--red)'}">${x.pnlPct >= 0 ? '+' : ''}${x.pnlPct}%</span>` : '-'],
+    x.sold ? [x.closed ? '최종 손익' : '실현 손익', `<span style="color:${swColor(x.pnl)}">${swSigned(x.pnl)} (${swSigned(x.pnlPct, '%')})</span>`] : null,
   ].filter(Boolean);
-  c.innerHTML = '📊 ' + items.map(([k, v]) => `<span><span style="color:var(--text3);">${k}</span> <strong>${v}</strong></span>`).join('');
+  c.innerHTML = (x.oversell ? '<span style="color:var(--red); font-weight:700;">⚠️ 매도 수량이 보유 수량보다 많습니다</span>' : '') +
+    items.map(([k, v]) => `<span><span style="color:var(--text3);">${k}</span> <strong>${v}</strong></span>`).join('');
   const costEl = document.getElementById('sw-cost');
-  if (costEl && x.closed && r.cost == null) costEl.placeholder = x.cost.toLocaleString();
+  if (costEl) costEl.placeholder = x.sold ? x.autoCost.toLocaleString() : '자동계산';
 }
 
 function swClear() {
-  ['sw-id','sw-name','sw-ticker','sw-entry-date','sw-entry-price','sw-qty','sw-target','sw-stop','sw-watch-date',
-   'sw-q1','sw-q2','sw-cap','sw-q4','sw-exit-date','sw-exit-price','sw-cost','sw-exit-reason','sw-good','sw-fix','sw-rule']
+  ['sw-id','sw-name','sw-ticker','sw-target','sw-stop','sw-watch-date',
+   'sw-q1','sw-q2','sw-cap','sw-q4','sw-cost','sw-good','sw-fix','sw-rule']
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  const costEl = document.getElementById('sw-cost'); if (costEl) costEl.placeholder = '자동계산';
+  document.getElementById('sw-buys').innerHTML = '';
+  document.getElementById('sw-sells').innerHTML = '';
+  swAddLeg('buy', { date: '' });
   swSetSeg('sw-type', ''); swSetSeg('sw-right', '');
   swSignals.clear(); document.querySelectorAll('.sw-sig').forEach(b => b.classList.remove('tag-on')); swSigCount();
   document.getElementById('sw-form-title').textContent = '새 스윙 매매 기록';
@@ -2679,18 +2785,28 @@ function swSave() {
   const r = swReadForm();
   if (!r.name) { alert('종목명을 입력해주세요.'); return; }
   if (!r.type) { alert('매매 구분을 선택해주세요.'); return; }
-  if (!r.entryDate || !r.entryPrice || !r.qty) { alert('진입 일자·단가·수량은 필수입니다.'); return; }
-  if ((r.exitDate && !r.exitPrice) || (!r.exitDate && r.exitPrice)) { alert('매도 일자와 단가를 함께 입력해주세요.'); return; }
-  if (r.exitDate && r.exitDate < r.entryDate) { alert('매도 일자가 진입 일자보다 빠릅니다.'); return; }
+  const bad = (legs, label) => legs.find(l => !l.date || !(l.price > 0) || !(l.qty > 0)) && `${label} 내역에 날짜·가격·수량이 빠진 행이 있습니다.`;
+  const err = bad(r.buys, '매수') || bad(r.sells, '매도');
+  if (err) { alert(err); return; }
+  if (!r.buys.length) { alert('매수 내역을 1건 이상 입력해주세요.'); return; }
   const x = swDerive(r);
+  if (x.oversell) { alert('매도 수량이 그 시점 보유 수량보다 많습니다. 날짜와 수량을 확인해주세요.'); return; }
   if (x.limitOk === false &&
-      !confirm(`원칙 한도 ${swWon(x.limit)}를 초과했습니다 (집행 ${swWon(x.entryAmt)}).\n초과 상태로 기록할까요?`)) return;
+      !confirm(`원칙 한도 ${swWon(x.limit)}를 초과했습니다 (최대 투입 ${swWon(x.peak)}).\n초과 상태로 기록할까요?`)) return;
+
+  // 날짜순 정렬해서 저장
+  const byDate = (a, b) => a.date.localeCompare(b.date);
+  r.buys.sort(byDate); r.sells.sort(byDate);
+  r.entryDate = x.firstBuy; // 정렬·호환용
 
   const list = swGet();
   const now = new Date().toLocaleString('ko-KR');
   if (r.id) {
     const i = list.findIndex(e => e.id === r.id);
-    if (i >= 0) list[i] = { ...list[i], ...r, updatedAt: now };
+    if (i >= 0) {
+      const { entryPrice, qty, exitDate, exitPrice, exitReason, ...rest } = list[i]; // 구버전 필드 제거
+      list[i] = { ...rest, ...r, updatedAt: now };
+    }
   } else {
     list.unshift({ ...r, id: Date.now(), createdAt: now });
   }
@@ -2699,25 +2815,36 @@ function swSave() {
   showToast(r.id ? '✅ 스윙 기록이 수정됐습니다!' : '✅ 스윙 기록이 저장됐습니다!');
 }
 
-function swEdit(id) {
+// mode: undefined(수정) / 'buy'(추가매수) / 'sell'(분할매도)
+function swEdit(id, mode) {
   const r = swGet().find(e => e.id === id); if (!r) return;
   swClear();
   const set = (k, v) => { const el = document.getElementById(k); if (el) el.value = v ?? ''; };
   set('sw-id', r.id); set('sw-name', r.name); set('sw-ticker', r.ticker);
-  set('sw-entry-date', r.entryDate); set('sw-entry-price', r.entryPrice); set('sw-qty', r.qty);
   set('sw-target', r.target); set('sw-stop', r.stop);
   set('sw-watch-date', r.watchDate); set('sw-q1', r.q1); set('sw-q2', r.q2); set('sw-cap', r.cap);
-  set('sw-q4', r.q4); set('sw-exit-date', r.exitDate); set('sw-exit-price', r.exitPrice); set('sw-cost', r.cost);
-  set('sw-exit-reason', r.exitReason); set('sw-good', r.good); set('sw-fix', r.fix); set('sw-rule', r.rule);
+  set('sw-q4', r.q4); set('sw-cost', r.cost);
+  set('sw-good', r.good); set('sw-fix', r.fix); set('sw-rule', r.rule);
+  document.getElementById('sw-buys').innerHTML = '';
+  r.buys.forEach(l => swAddLeg('buy', l));
+  r.sells.forEach(l => swAddLeg('sell', l));
   swSetSeg('sw-type', r.type); swSetSeg('sw-right', r.right);
   (r.signals || []).forEach(v => swSignals.add(v));
   document.querySelectorAll('.sw-sig').forEach(b => b.classList.toggle('tag-on', swSignals.has(b.dataset.v))); swSigCount();
-  const x = swDerive(r);
-  document.getElementById('sw-form-title').textContent = `${r.name} ${x.closed ? '기록 수정' : '— 청산·복기 입력'}`;
+
+  let focusRow = null;
+  if (mode === 'buy') focusRow = swAddLeg('buy');
+  if (mode === 'sell') {
+    const x0 = swDerive(r);
+    focusRow = swAddLeg('sell', { date: TODAY, qty: x0.remain || null });
+  }
+  const label = { buy: '— 추가 매수', sell: '— 분할 매도' }[mode] || '기록 수정';
+  document.getElementById('sw-form-title').textContent = `${r.name} ${label}`;
   document.getElementById('sw-edit-badge').style.display = '';
   document.getElementById('sw-save-btn').textContent = '💾 수정 저장';
   swCalc();
-  document.querySelector('#panel-swing .swing-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  (focusRow || document.querySelector('#panel-swing .swing-form')).scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (focusRow) setTimeout(() => focusRow.querySelector('.sw-l-price').focus(), 300);
 }
 
 function swDelete(id) {
@@ -2733,37 +2860,43 @@ function swFilter(key, val, el) {
 }
 
 // 사용자 템플릿 형식의 마크다운 (Claude 스윙 프로젝트 등에 붙여넣기용)
-function swMarkdown(r) {
-  const x = swDerive(r), fmt = n => n == null ? '' : Number(n).toLocaleString();
+function swMarkdown(r0) {
+  const x = swDerive(r0), r = x.r, fmt = n => n == null ? '' : Math.round(Number(n)).toLocaleString();
   const lim = x.limit === undefined ? '' : x.limit === null ? '1천억 미만 (원칙 한도 정의 없음)' : swWon(x.limit);
-  const comply = x.limit ? `${swWon(x.entryAmt)} / ${x.limitOk ? '준수' : '초과'} (한도 대비 ${(x.entryAmt / x.limit * 100).toFixed(0)}%)` : swWon(x.entryAmt);
+  const comply = x.limit ? `최대 투입 ${swWon(x.peak)} / ${x.limitOk ? '준수' : '초과'} (한도 대비 ${(x.peak / x.limit * 100).toFixed(0)}%)` : swWon(x.peak);
+  const ml = t => (t || '').replace(/\n/g, '\n  ');
   return [
     `### [단기 스윙 매매일지] ${r.name}${r.ticker ? ` (${r.ticker})` : ''}`, '',
     `1. 기본 정보`,
     `- 매매 구분: ${r.type || ''}`,
-    `- 진입 일자 / 단가: ${r.entryDate || ''} / ${fmt(r.entryPrice)}원`,
-    `- 체결 수량 / 진입 금액: ${fmt(r.qty)}주 / ${fmt(x.entryAmt)}원`,
-    (r.target || r.stop) ? `- 목표가 / 손절가: ${swPriceWithPct(r.target, r.entryPrice)} / ${swPriceWithPct(r.stop, r.entryPrice)}` : null, '',
+    ...(x.buyLegs.length > 1
+      ? [`- 분할매수 ${x.buyLegs.length}회:`, ...x.buyLegs.map(l => `  - ${l.n}차 ${l.date} / ${fmt(l.price)}원 × ${fmt(l.qty)}주${l.memo ? ` — ${l.memo}` : ''}`),
+         `- 평균 매수단가 / 총 수량 / 총 매수금액: ${fmt(x.avgBuy)}원 / ${fmt(x.bought)}주 / ${fmt(x.buyAmt)}원`]
+      : [`- 진입 일자 / 단가: ${x.firstBuy} / ${fmt(x.avgBuy)}원`, `- 체결 수량 / 진입 금액: ${fmt(x.bought)}주 / ${fmt(x.buyAmt)}원`]),
+    (r.target || r.stop) ? `- 목표가 / 손절가 (평단 대비): ${swPriceWithPct(r.target, x.avgBuy)} / ${swPriceWithPct(r.stop, x.avgBuy)}` : null, '',
     `2. 핵심 5대 점검 항목`,
     `Q1. 언제부터 관찰했는지?`,
-    `- ${r.watchDate ? r.watchDate + (x.watchDays != null ? ` (진입까지 ${x.watchDays}일)` : '') + (r.q1 ? ' — ' : '') : ''}${r.q1 || ''}`, '',
+    `- ${r.watchDate ? r.watchDate + (x.watchDays != null ? ` (첫 진입까지 ${x.watchDays}일)` : '') + (r.q1 ? ' — ' : '') : ''}${r.q1 || ''}`, '',
     `Q2. 지금 매수하는 이유는 무엇인지?`,
-    `- ${(r.q2 || '').replace(/\n/g, '\n  ')}`,
+    `- ${ml(r.q2)}`,
     (r.signals || []).length ? `- 세력 개입 신호 ${r.signals.length}/5: ${r.signals.join(', ')}` : null, '',
     `Q3. 종목에 따른 매수 한도는 얼마인지?`,
     `- 종목 시가총액: ${r.cap != null ? swCapLabel(r.cap) : ''}`,
     `- 원칙상 최대 한도: ${lim}`,
     `- 실제 집행 금액 / 비중 준수 여부: ${comply}`, '',
     `Q4. 매수가 옳았는지? (O / X) ${r.right || ''}`,
-    `- 상세 복기: ${(r.q4 || '').replace(/\n/g, '\n  ')}`, '',
+    `- 상세 복기: ${ml(r.q4)}`, '',
     `Q5. 결과는?`,
-    `- 매도 일자 / 단가: ${r.exitDate ? `${r.exitDate} / ${fmt(r.exitPrice)}원` : ''}`,
-    `- 최종 손익률 / 손익금: ${x.closed ? `${x.pnlPct >= 0 ? '+' : ''}${x.pnlPct}% / ${x.pnl >= 0 ? '+' : ''}${fmt(x.pnl)}원 (보유 ${x.hold}거래일)` : ''}`,
-    `- 청산 사유: ${r.exitReason || ''}`, '',
+    ...(x.sellLegs.length
+      ? [`- 매도 일자 / 단가${x.sellLegs.length > 1 ? ` (분할매도 ${x.sellLegs.length}회)` : ''}:`,
+         ...x.sellLegs.map(l => `  - ${l.n}차 ${l.date} / ${fmt(l.price)}원 × ${fmt(l.qty)}주 (${swSigned(l.pct, '%')})${l.reason ? ` · ${l.reason}` : ''}${l.memo ? ` — ${l.memo}` : ''}`)]
+      : [`- 매도 일자 / 단가: `]),
+    `- 최종 손익률 / 손익금: ${x.sold ? `${swSigned(x.pnlPct, '%')} / ${swSigned(x.pnl)}${x.closed ? ` (보유 ${x.hold}거래일)` : ` (부분청산 · 잔여 ${x.remain}주)`}` : ''}`,
+    `- 청산 사유: ${x.exitReason}`, '',
     `3. 피드백 및 다음 행동 원칙`,
-    `- 잘한 점: ${(r.good || '').replace(/\n/g, '\n  ')}`,
-    `- 고쳐야 할 점: ${(r.fix || '').replace(/\n/g, '\n  ')}`,
-    `- 새롭게 추가할 행동 룰: ${(r.rule || '').replace(/\n/g, '\n  ')}`,
+    `- 잘한 점: ${ml(r.good)}`,
+    `- 고쳐야 할 점: ${ml(r.fix)}`,
+    `- 새롭게 추가할 행동 룰: ${ml(r.rule)}`,
   ].filter(l => l !== null).join('\n');
 }
 function swCopy(id) {
@@ -2779,56 +2912,76 @@ function swCopyFallback(t, done) {
   ta.remove();
 }
 
+function swLegTable(x) {
+  const rows = [
+    ...x.buyLegs.map(l => ({ ...l, side: 'buy' })),
+    ...x.sellLegs.map(l => ({ ...l, side: 'sell' })),
+  ].sort((a, b) => a.date.localeCompare(b.date) || (a.side === 'buy' ? -1 : 1));
+  return `<table class="watch-table mini-table sw-leg-table"><thead><tr><th>구분</th><th>날짜</th><th>가격</th><th>수량</th><th>결과</th><th>메모</th></tr></thead><tbody>${
+    rows.map(l => l.side === 'buy'
+      ? `<tr><td><span class="sw-side buy">매수 ${l.n}차</span></td><td>${l.date}</td><td>${swWon(l.price)}</td><td>${l.qty.toLocaleString()}주</td>
+           <td style="color:var(--text3);">평단 ${swWon(l.avgAfter)} · 보유 ${l.qtyAfter}주</td><td>${swEsc(l.memo)}</td></tr>`
+      : `<tr><td><span class="sw-side sell">매도 ${l.n}차</span></td><td>${l.date}</td><td>${swWon(l.price)}</td><td>${l.qty.toLocaleString()}주</td>
+           <td><b style="color:${swColor(l.gain)}">${swSigned(l.pct, '%')}</b> <span style="color:var(--text3);">· 잔여 ${l.qtyAfter}주${l.reason ? ' · ' + swEsc(l.reason) : ''}</span></td><td>${swEsc(l.memo)}</td></tr>`
+    ).join('')}</tbody></table>`;
+}
+
 function swRenderList() {
-  const all = swGet();
-  const list = all.filter(r => {
-    const closed = swDerive(r).closed;
-    return (swFilters.st === 'ALL' || (swFilters.st === 'closed') === closed) && (swFilters.tp === 'ALL' || r.type === swFilters.tp);
-  }).sort((a, b) => (b.entryDate || '').localeCompare(a.entryDate || '') || b.id - a.id);
+  const list = swGet().map(swDerive).filter(x =>
+    (swFilters.st === 'ALL' || x.status === swFilters.st || (swFilters.st === 'holding' && x.status !== 'closed')) &&
+    (swFilters.tp === 'ALL' || x.r.type === swFilters.tp)
+  ).sort((a, b) => (b.firstBuy || '').localeCompare(a.firstBuy || '') || b.r.id - a.r.id);
   const box = document.getElementById('sw-list'), empty = document.getElementById('sw-empty');
   if (!box) return;
   document.getElementById('sw-count').textContent = `${list.length}건`;
   empty.style.display = list.length ? 'none' : 'block';
-  box.innerHTML = list.map(r => {
-    const x = swDerive(r);
-    const pc = x.pnl == null ? 'var(--text3)' : x.pnl >= 0 ? 'var(--accent)' : 'var(--red)';
-    const status = x.closed
-      ? `<span class="badge" style="font-size:10px; color:${pc}; border:1px solid ${pc}50;">${x.pnlPct >= 0 ? '+' : ''}${x.pnlPct}% · ${x.pnl >= 0 ? '+' : ''}${swWon(x.pnl)}</span>`
-      : `<span class="badge sw-open-badge" style="font-size:10px;">🟡 보유중 ${x.hold}거래일${x.hold > 5 ? ' ⚠️가이드 초과' : ''}</span>`;
+  box.innerHTML = list.map(x => {
+    const r = x.r, pc = swColor(x.pnl);
+    const pnlBadge = x.sold ? `<span class="badge" style="font-size:10px; color:${pc}; border:1px solid ${pc}50;">${x.closed ? '' : '실현 '}${swSigned(x.pnlPct, '%')} · ${swSigned(x.pnl)}</span>` : '';
+    const status = x.status === 'closed' ? pnlBadge
+      : `<span class="badge sw-open-badge" style="font-size:10px;">${x.status === 'partial' ? '🟠 부분청산' : '🟡 보유중'} · 잔여 ${x.remain}주 · ${x.hold}거래일${x.hold > 5 ? ' ⚠️가이드 초과' : ''}</span>${x.status === 'partial' ? pnlBadge : ''}`;
+    const legBadge = (x.buyLegs.length > 1 || x.sellLegs.length > 1)
+      ? `<span class="memo-badge">매수 ${x.buyLegs.length}회 · 매도 ${x.sellLegs.length}회</span>` : '';
     const row = (k, v) => v ? `<div class="sw-row"><span class="sw-k">${k}</span><span class="sw-v">${v}</span></div>` : '';
     const limHtml = x.limit === undefined ? '' : x.limit === null
       ? `${swCapLabel(r.cap)} · <span style="color:var(--gold)">원칙 한도 정의 없음 (1천억 미만)</span>`
-      : `${swCapLabel(r.cap)} → 한도 ${swWon(x.limit)} · 집행 ${swWon(x.entryAmt)} (${(x.entryAmt / x.limit * 100).toFixed(0)}%) ${x.limitOk ? '<span style="color:var(--accent)">✅ 준수</span>' : '<span style="color:var(--red); font-weight:700;">❌ 한도 초과</span>'}`;
+      : `${swCapLabel(r.cap)} → 한도 ${swWon(x.limit)} · 최대 투입 ${swWon(x.peak)} (${(x.peak / x.limit * 100).toFixed(0)}%) ${x.limitOk ? '<span style="color:var(--accent)">✅ 준수</span>' : '<span style="color:var(--red); font-weight:700;">❌ 한도 초과</span>'}`;
     return `<details class="journal-card sw-card" style="border-left:3px solid ${x.closed ? pc : 'var(--gold)'};">
       <summary class="journal-card-header" style="flex-wrap:wrap; gap:8px;">
         <span class="journal-ticker">${swEsc(r.name)}</span>
         ${r.ticker ? `<span class="journal-meta">${swEsc(r.ticker)}</span>` : ''}
         <span class="memo-badge">${swEsc(r.type)}</span>
+        ${legBadge}
         ${r.right ? `<span class="memo-badge" style="${r.right === 'O' ? 'color:var(--accent); border-color:var(--accent);' : 'color:var(--red); border-color:var(--red);'}">Q4 ${r.right}</span>` : ''}
         ${x.limitOk === false ? `<span class="memo-badge mkt-bad">한도 초과</span>` : ''}
         ${status}
-        <span class="journal-meta" style="margin-left:auto;">${r.entryDate}${r.exitDate ? ' → ' + r.exitDate : ''}</span>
+        <span class="journal-meta" style="margin-left:auto;">${x.firstBuy}${x.closed ? ' → ' + x.lastSellDate : ''}</span>
       </summary>
       <div class="sw-body">
         <div class="sw-doc-title">[단기 스윙 매매일지] ${swEsc(r.name)}${r.ticker ? ` (${swEsc(r.ticker)})` : ''}</div>
         <div class="sw-sec-title">1. 기본 정보</div>
         ${row('매매 구분', swEsc(r.type))}
-        ${row('진입 일자 / 단가', `${r.entryDate} / ${swWon(r.entryPrice)}`)}
-        ${row('체결 수량 / 진입 금액', `${(r.qty || 0).toLocaleString()}주 / ${swWon(x.entryAmt)}`)}
-        ${(r.target || r.stop) ? row('목표가 / 손절가', `${r.target ? `${swWon(r.target)} <b style="color:var(--accent)">(${swPct(r.target, r.entryPrice)})</b>` : '-'} / ${r.stop ? `${swWon(r.stop)} <b style="color:var(--red)">(${swPct(r.stop, r.entryPrice)})</b>` : '-'}`) : ''}
+        ${row('평균 매수단가', `${swWon(x.avgBuy)} · 총 ${x.bought.toLocaleString()}주 · ${swWon(x.buyAmt)}`)}
+        ${x.sold ? row('평균 매도단가', `${swWon(x.avgSell)} · 총 ${x.sold.toLocaleString()}주 · 잔여 ${x.remain}주`) : ''}
+        ${(r.target || r.stop) ? row('목표가 / 손절가', `${r.target ? `${swWon(r.target)} <b style="color:var(--accent)">(${swPct(r.target, x.avgBuy)})</b>` : '-'} / ${r.stop ? `${swWon(r.stop)} <b style="color:var(--red)">(${swPct(r.stop, x.avgBuy)})</b>` : '-'} <span style="color:var(--text3); font-size:11px;">평단 대비</span>`) : ''}
+        <div style="margin:8px 0 4px;">${swLegTable(x)}</div>
         <div class="sw-sec-title">2. 핵심 5대 점검 항목</div>
-        ${row('Q1. 관찰 시작', (r.watchDate ? `${r.watchDate}${x.watchDays != null ? ` (진입까지 ${x.watchDays}일)` : ''}` : '') + (r.q1 ? (r.watchDate ? ' — ' : '') + swBr(r.q1) : ''))}
+        ${row('Q1. 관찰 시작', (r.watchDate ? `${r.watchDate}${x.watchDays != null ? ` (첫 진입까지 ${x.watchDays}일)` : ''}` : '') + (r.q1 ? (r.watchDate ? ' — ' : '') + swBr(r.q1) : ''))}
         ${row('Q2. 매수 이유', swBr(r.q2) + ((r.signals || []).length ? `<div style="margin-top:4px; font-size:11px; color:var(--text3);">세력 개입 신호 <b style="color:${r.signals.length >= 3 ? 'var(--accent)' : 'var(--text2)'}">${r.signals.length}/5</b>: ${r.signals.join(', ')}</div>` : ''))}
         ${row('Q3. 매수 한도', limHtml)}
         ${row('Q4. 매수 옳았나', (r.right ? `<b>${r.right}</b> ` : '') + swBr(r.q4))}
-        ${row('Q5. 결과', x.closed ? `${r.exitDate} / ${swWon(r.exitPrice)} · <b style="color:${pc}">${x.pnlPct >= 0 ? '+' : ''}${x.pnlPct}% / ${x.pnl >= 0 ? '+' : ''}${swWon(x.pnl)}</b> · 보유 ${x.hold}거래일 · 비용 ${swWon(x.cost)}${r.exitReason ? ` · <b>${swEsc(r.exitReason)}</b>` : ''}` : '<span style="color:var(--text3)">보유중 — 청산 후 입력</span>')}
+        ${row('Q5. 결과', x.sold
+          ? `<b style="color:${pc}">${swSigned(x.pnlPct, '%')} / ${swSigned(x.pnl)}</b> · ${x.closed ? `보유 ${x.hold}거래일` : `부분청산 (잔여 ${x.remain}주)`} · 비용 ${swWon(x.cost)}${x.exitReason ? ` · <b>${swEsc(x.exitReason)}</b>` : ''}`
+          : '<span style="color:var(--text3)">보유중 — 매도 후 입력</span>')}
         ${(r.good || r.fix || r.rule) ? '<div class="sw-sec-title">3. 피드백 및 다음 행동 원칙</div>' : ''}
         ${row('잘한 점', swBr(r.good))}
         ${row('고쳐야 할 점', swBr(r.fix))}
         ${row('새 행동 룰', swBr(r.rule))}
-        <div style="display:flex; gap:6px; justify-content:flex-end; margin-top:10px;">
+        <div style="display:flex; gap:6px; justify-content:flex-end; margin-top:10px; flex-wrap:wrap;">
           <button class="btn btn-ghost btn-sm" onclick="swCopy(${r.id})">📋 마크다운 복사</button>
-          <button class="btn btn-primary btn-sm" onclick="swEdit(${r.id})">${x.closed ? '✏ 수정' : '✏ 청산·복기 입력'}</button>
+          ${!x.closed ? `<button class="btn btn-ghost btn-sm" onclick="swEdit(${r.id},'buy')">📥 추가 매수</button>
+          <button class="btn btn-ghost btn-sm" onclick="swEdit(${r.id},'sell')">📤 분할 매도</button>` : ''}
+          <button class="btn btn-primary btn-sm" onclick="swEdit(${r.id})">✏ 수정·복기</button>
           <button class="btn btn-danger btn-sm" onclick="swDelete(${r.id})">🗑</button>
         </div>
       </div>
@@ -2837,63 +2990,74 @@ function swRenderList() {
 }
 
 function swRenderStats() {
-  const all = swGet().map(r => ({ r, x: swDerive(r) }));
-  const closed = all.filter(o => o.x.closed);
-  const wins = closed.filter(o => o.x.pnl > 0);
-  const sumPnl = closed.reduce((a, o) => a + o.x.pnl, 0);
-  const avgPct = closed.length ? (closed.reduce((a, o) => a + o.x.pnlPct, 0) / closed.length).toFixed(2) : null;
-  const avgHold = closed.length ? (closed.reduce((a, o) => a + o.x.hold, 0) / closed.length).toFixed(1) : null;
-  const rated = all.filter(o => o.r.right);
-  const limRated = all.filter(o => o.x.limitOk !== null);
+  const all = swGet().map(swDerive);
+  const closed = all.filter(x => x.closed);
+  const partial = all.filter(x => x.status === 'partial').length;
+  const wins = closed.filter(x => x.pnl > 0);
+  const sumPnl = closed.reduce((a, x) => a + x.pnl, 0);
+  const avgPct = closed.length ? closed.reduce((a, x) => a + x.pnlPct, 0) / closed.length : null;
+  const avgHold = closed.length ? (closed.reduce((a, x) => a + x.hold, 0) / closed.length).toFixed(1) : null;
+  const rated = all.filter(x => x.r.right);
+  const limRated = all.filter(x => x.limitOk !== null);
+  const splitBuy = all.filter(x => x.buyLegs.length > 1).length, splitSell = all.filter(x => x.sellLegs.length > 1).length;
   const card = (v, label, color) => `<div class="card" style="text-align:center; padding:14px; ${color ? `border-left:3px solid ${color};` : ''}">
       <div style="font-family:var(--mono); font-size:22px; font-weight:800; color:${color || 'var(--text)'};">${v}</div>
       <div style="font-size:12px; color:var(--text3); margin-top:4px;">${label}</div></div>`;
   const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '-';
   document.getElementById('sw-stat-cards').innerHTML = [
-    card(`${closed.length}<span style="font-size:13px; color:var(--text3);"> / 보유 ${all.length - closed.length}</span>`, '청산 완료 건'),
+    card(`${closed.length}<span style="font-size:13px; color:var(--text3);"> / 보유 ${all.length - closed.length}${partial ? ` (부분 ${partial})` : ''}</span>`, '청산 완료 건'),
     card(pct(wins.length, closed.length), `승률 (${wins.length}승 ${closed.length - wins.length}패)`, 'var(--accent)'),
-    card(closed.length ? `${sumPnl >= 0 ? '+' : ''}${sumPnl.toLocaleString()}` : '-', `누적 손익금(원) · 평균 ${avgPct != null ? (avgPct >= 0 ? '+' : '') + avgPct + '%' : '-'}`, sumPnl >= 0 ? 'var(--accent)' : 'var(--red)'),
+    card(closed.length ? swSigned(sumPnl).replace('원', '') : '-', `누적 손익금(원) · 평균 ${avgPct != null ? swSigned(avgPct, '%') : '-'}`, sumPnl >= 0 ? 'var(--accent)' : 'var(--red)'),
     card(avgHold != null ? avgHold + '일' : '-', '평균 보유(거래일) · 가이드 3~5', 'var(--blue)'),
-    card(pct(rated.filter(o => o.r.right === 'O').length, rated.length), `Q4 '매수 옳았다(O)' 비율 (${rated.length}건)`, 'var(--purple)'),
-    card(pct(limRated.filter(o => o.x.limitOk).length, limRated.length), `Q3 매수 한도 준수율 (${limRated.length}건)`, 'var(--gold)'),
-    card(pct(closed.filter(o => o.x.hold >= 3 && o.x.hold <= 5).length, closed.length), '보유 3~5거래일 준수율'),
-    card(pct(all.filter(o => (o.r.signals || []).length >= 3).length, all.filter(o => (o.r.signals || []).length).length), '세력 신호 3/5↑ 진입 비율'),
+    card(pct(rated.filter(x => x.r.right === 'O').length, rated.length), `Q4 '매수 옳았다(O)' 비율 (${rated.length}건)`, 'var(--purple)'),
+    card(pct(limRated.filter(x => x.limitOk).length, limRated.length), `Q3 매수 한도 준수율 (${limRated.length}건)`, 'var(--gold)'),
+    card(pct(closed.filter(x => x.hold >= 3 && x.hold <= 5).length, closed.length), '보유 3~5거래일 준수율'),
+    card(`${splitBuy} / ${splitSell}`, `분할매수 / 분할매도 건수 (전체 ${all.length})`),
   ].join('');
 
   const table = (title, keys, keyFn) => {
     const rows = keys.map(k => {
-      const g = closed.filter(o => keyFn(o) === k); if (!g.length) return '';
-      const w = g.filter(o => o.x.pnl > 0).length, p = g.reduce((a, o) => a + o.x.pnl, 0);
-      const ap = (g.reduce((a, o) => a + o.x.pnlPct, 0) / g.length).toFixed(2);
+      const g = closed.filter(x => keyFn(x) === k); if (!g.length) return '';
+      const w = g.filter(x => x.pnl > 0).length, p = g.reduce((a, x) => a + x.pnl, 0);
+      const ap = g.reduce((a, x) => a + x.pnlPct, 0) / g.length;
       return `<tr><td>${k}</td><td style="font-family:var(--mono);">${g.length}</td><td style="font-family:var(--mono);">${Math.round(w / g.length * 100)}%</td>
-        <td style="font-family:var(--mono); color:${ap >= 0 ? 'var(--accent)' : 'var(--red)'};">${ap >= 0 ? '+' : ''}${ap}%</td>
-        <td style="font-family:var(--mono); color:${p >= 0 ? 'var(--accent)' : 'var(--red)'};">${p >= 0 ? '+' : ''}${p.toLocaleString()}</td></tr>`;
+        <td style="font-family:var(--mono); color:${swColor(ap)};">${swSigned(ap, '%')}</td>
+        <td style="font-family:var(--mono); color:${swColor(p)};">${swSigned(p).replace('원', '')}</td></tr>`;
     }).join('');
     return `<div style="font-size:12px; font-weight:700; margin-bottom:6px;">${title}</div>` + (rows
       ? `<table class="watch-table mini-table"><thead><tr><th>구분</th><th>건수</th><th>승률</th><th>평균</th><th>손익금(원)</th></tr></thead><tbody>${rows}</tbody></table>`
       : `<div style="font-size:12px; color:var(--text3);">청산 완료 데이터 없음</div>`);
   };
-  const legacy = [...new Set(closed.map(o => o.r.type).filter(t => t && !SW_TYPES.includes(t)))];
-  document.getElementById('sw-by-type').innerHTML = table('📂 매매 구분별 성과', [...SW_TYPES, ...legacy], o => o.r.type);
-  document.getElementById('sw-by-reason').innerHTML = table('🚪 청산 사유별 성과', ['목표가 달성', '거래대금 부진 청산', '손절선 이탈', '미기록'], o => o.r.exitReason || '미기록');
+  const legacy = [...new Set(closed.map(x => x.r.type).filter(t => t && !SW_TYPES.includes(t)))];
+  document.getElementById('sw-by-type').innerHTML = table('📂 매매 구분별 성과', [...SW_TYPES, ...legacy], x => x.r.type);
+  document.getElementById('sw-by-reason').innerHTML = table('🚪 최종 청산 사유별 성과 (마지막 매도 기준)', [...SW_REASONS, '미기록'], x => x.exitReason || '미기록');
 
-  const rules = swGet().filter(r => r.rule).sort((a, b) => (b.exitDate || b.entryDate || '').localeCompare(a.exitDate || a.entryDate || ''));
+  const rules = all.filter(x => x.r.rule).sort((a, b) => (b.lastSellDate || b.firstBuy).localeCompare(a.lastSellDate || a.firstBuy));
   document.getElementById('sw-rules-all').innerHTML = rules.length
-    ? rules.map(r => r.rule.split('\n').filter(l => l.trim()).map(l =>
-        `<div class="sw-rule-line"><span>➕ ${swEsc(l.replace(/^[-•·]\s*/, ''))}</span><span class="journal-meta">${swEsc(r.name)} · ${r.exitDate || r.entryDate}</span></div>`).join('')).join('')
+    ? rules.map(x => x.r.rule.split('\n').filter(l => l.trim()).map(l =>
+        `<div class="sw-rule-line"><span>➕ ${swEsc(l.replace(/^[-•·]\s*/, ''))}</span><span class="journal-meta">${swEsc(x.r.name)} · ${x.lastSellDate || x.firstBuy}</span></div>`).join('')).join('')
     : '<div style="font-size:12px; color:var(--text3);">아직 기록된 행동 룰이 없습니다.</div>';
 }
 
-function swRender() { swRenderStats(); swRenderList(); swCalc(); }
+function swRender() {
+  if (!document.querySelector('#sw-buys .sw-leg') && !document.getElementById('sw-id').value) swAddLeg('buy', { date: '' });
+  swRenderStats(); swRenderList(); swCalc();
+}
 
 function exportSwingCSV() {
   const list = swGet();
   if (!list.length) { alert('저장된 스윙 기록이 없습니다.'); return; }
-  const H = ['종목명','종목코드','매매구분','진입일자','진입단가','수량','진입금액','목표가','목표(%)','손절가','손절(%)','관찰시작일','관찰기간(일)','Q1 관찰','Q2 매수이유','세력신호',
-    '시가총액(억)','원칙한도','한도준수','Q4 O/X','Q4 복기','매도일자','매도단가','수수료+세금','손익금','손익률(%)','보유거래일','청산사유','잘한점','고칠점','새 행동룰'];
-  const rows = list.map(r => { const x = swDerive(r); return [r.name, r.ticker, r.type, r.entryDate, r.entryPrice, r.qty, x.entryAmt, r.target, swPct(r.target, r.entryPrice), r.stop, swPct(r.stop, r.entryPrice),
+  const legStr = (legs, sell) => legs.map(l => `${l.n}차 ${l.date} ${l.price}x${l.qty}${sell && l.reason ? ' ' + l.reason : ''}`).join(' | ');
+  const H = ['종목명','종목코드','매매구분','상태','첫 매수일','마지막 매도일','매수내역','매수횟수','총매수수량','평균매수단가','총매수금액','최대투입금액',
+    '매도내역','매도횟수','총매도수량','평균매도단가','잔여수량','목표가','목표(평단대비%)','손절가','손절(평단대비%)','관찰시작일','관찰기간(일)','Q1 관찰','Q2 매수이유','세력신호',
+    '시가총액(억)','원칙한도','한도준수','Q4 O/X','Q4 복기','수수료+세금','손익금','손익률(%)','보유거래일','최종청산사유','잘한점','고칠점','새 행동룰'];
+  const st = { open: '보유중', partial: '부분청산', closed: '청산완료' };
+  const rows = list.map(r0 => { const x = swDerive(r0), r = x.r; return [r.name, r.ticker, r.type, st[x.status], x.firstBuy, x.lastSellDate,
+    legStr(x.buyLegs), x.buyLegs.length, x.bought, x.avgBuy && Math.round(x.avgBuy), x.buyAmt, Math.round(x.peak),
+    legStr(x.sellLegs, true), x.sellLegs.length, x.sold, x.avgSell && Math.round(x.avgSell), x.remain,
+    r.target, swPct(r.target, x.avgBuy), r.stop, swPct(r.stop, x.avgBuy),
     r.watchDate, x.watchDays, r.q1, r.q2, (r.signals || []).join(' | '), r.cap, x.limit, x.limitOk == null ? '' : x.limitOk ? '준수' : '초과',
-    r.right, r.q4, r.exitDate, r.exitPrice, x.cost, x.pnl, x.pnlPct, x.closed ? x.hold : '', r.exitReason, r.good, r.fix, r.rule]
+    r.right, r.q4, x.sold ? x.cost : '', x.pnl, x.pnlPct, x.closed ? x.hold : '', x.exitReason, r.good, r.fix, r.rule]
     .map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','); });
   const csv = '﻿' + [H.map(h => `"${h}"`).join(','), ...rows].join('\n');
   const a = document.createElement('a');

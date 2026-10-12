@@ -983,3 +983,22 @@ select.inp { cursor: pointer; }
 .sw-rule-line:last-child { border-bottom:none; }
 @media (max-width:640px) { .sw-row { flex-direction:column; gap:2px; } .sw-k { flex:none; } }
 .sw-pct { font-size:11px; font-family:var(--mono); font-weight:700; margin-top:3px; min-height:14px; }
+
+/* 스윙 분할매수·분할매도 */
+.sw-legs { background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin-bottom:10px; }
+.sw-legs-head { display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13px; font-weight:700; margin-bottom:6px; flex-wrap:wrap; }
+.sw-leg { display:flex; gap:6px; align-items:center; flex-wrap:wrap; padding:5px 0; border-top:1px dashed var(--border); }
+.sw-leg:first-child { border-top:none; }
+.sw-leg .inp { padding:7px 9px; font-size:12px; }
+.sw-leg .sw-l-date { width:140px; } .sw-leg .sw-l-price { width:110px; } .sw-leg .sw-l-qty { width:90px; }
+.sw-leg .sw-l-reason { width:150px; } .sw-leg .sw-l-memo { flex:1; min-width:160px; }
+.sw-leg-n { font-family:var(--mono); font-size:11px; font-weight:800; width:30px; text-align:center; border-radius:6px; padding:3px 0; }
+.sw-leg.buy .sw-leg-n { background:#00c9a71a; color:var(--accent); }
+.sw-leg.sell .sw-leg-n { background:#d630551a; color:var(--red); }
+.sw-leg-info { font-size:11px; font-family:var(--mono); color:var(--text3); min-width:150px; }
+.sw-leg-del { border:none; background:none; color:var(--text3); cursor:pointer; font-size:14px; padding:2px 6px; }
+.sw-leg-del:hover { color:var(--red); }
+.sw-side { font-size:11px; font-weight:700; padding:2px 7px; border-radius:8px; white-space:nowrap; }
+.sw-side.buy { background:#00c9a71a; color:var(--accent); }
+.sw-side.sell { background:#d630551a; color:var(--red); }
+.sw-leg-table td { font-size:12px; }
