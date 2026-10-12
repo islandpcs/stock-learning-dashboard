@@ -1002,3 +1002,10 @@ select.inp { cursor: pointer; }
 .sw-side.buy { background:#00c9a71a; color:var(--accent); }
 .sw-side.sell { background:#d630551a; color:var(--red); }
 .sw-leg-table td { font-size:12px; }
+
+/* 투자일지 분할매수·분할매도 */
+.j-pos-hint { font-size:12px; color:var(--text2); background:var(--bg3); border:1px solid var(--border); border-left:3px solid var(--blue); border-radius:6px; padding:8px 12px; margin:-2px 0 12px; }
+.seq-buy-t { color:var(--accent); } .seq-sell-t { color:var(--red); }
+.seq-badge.seq-buy { color:var(--accent); border-color:var(--accent); }
+.seq-badge.seq-sell { color:#d97706; border-color:#d97706; }
+.seq-badge.seq-final { color:var(--red); border-color:var(--red); font-weight:700; }

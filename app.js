@@ -834,6 +834,7 @@ function calcJournal() {
     pnlPctEl.textContent = pnlPct !== null ? (parseFloat(pnlPct) >= 0 ? '+' : '') + pnlPct + '%' : '-';
     pnlPctEl.style.color = pnlPct !== null ? (parseFloat(pnlPct) >= 0 ? 'var(--accent)' : 'var(--red)') : 'var(--text3)';
   }
+  jPosHint();
 }
 
 // ── 심리 선택 ──
@@ -865,6 +866,7 @@ function clearJournalForm() {
   ['calc-amount','calc-pnl-won','calc-pnl-pct'].forEach(id => {
     const el = document.getElementById(id); if(el) { el.textContent = '-'; el.style.color = ''; }
   });
+  const bp = document.getElementById('j-buy-price'); if (bp) delete bp.dataset.auto;
   toggleSellFields();
 }
 
@@ -882,6 +884,11 @@ async function addJournalEntry() {
   if (type === '매수' && (!flow || !volState)) {
     alert('매수 기록은 [외인 수급]과 [시장 거래대금] 선택이 필수입니다.');
     return;
+  }
+  if (type === '매도') {
+    const pos = jPosAt(document.getElementById('j-ticker')?.value.trim() || name, date);
+    const q = parseFloat(document.getElementById('j-qty')?.value) || 0;
+    if (q > pos.qty && !confirm(`일지 기준 보유 수량(${pos.qty}주)보다 많이 매도합니다.\n일지 이전 보유분이 있다면 그대로 저장해도 됩니다. 저장할까요?`)) return;
   }
   const qty       = parseFloat(document.getElementById('j-qty')?.value) || 0;
   const buyPrice  = parseFloat(document.getElementById('j-buy-price')?.value) || 0;
@@ -964,7 +971,7 @@ function filterJournalMarket(val, el) {
 
 // ── 통계 탭 전환 ──
 function switchJournalTab(id, btn) {
-  ['stats','byticker','bymonth'].forEach(t => {
+  ['stats','byticker','bymonth','positions'].forEach(t => {
     const el = document.getElementById('jt-' + t);
     if(el) el.style.display = 'none';
   });
@@ -974,11 +981,13 @@ function switchJournalTab(id, btn) {
   btn.classList.add('active');
   if(id === 'byticker') renderTickerPnl();
   if(id === 'bymonth')  { renderMonthYearSelect(); renderMonthlyStats(); }
+  if(id === 'positions') renderPositions();
 }
 
 // ── 거래 목록 렌더 ──
 function renderJournal() {
   const list = getJournal();
+  const posInfo = jPositions(list).perEntry;
   const filtered = list.filter(e => {
     const matchType   = journalFilter === 'ALL' || e.type === journalFilter;
     const matchMarket = journalMarketFilter === 'ALL' || e.market === journalMarketFilter;
@@ -1004,6 +1013,7 @@ function renderJournal() {
         ${e.ticker ? `<span class="journal-meta">${e.ticker}</span>` : ''}
         ${e.market ? `<span class="badge badge-blue" style="font-size:10px;">${e.market}</span>` : ''}
         <span class="badge" style="font-size:10px; background:${e.type==='매수'?'#00c9a715':'#d6305515'}; color:${typeColor}; border:1px solid ${typeColor}30;">${e.type}</span>
+        ${jSeqBadge(posInfo.get(e.id), e.type)}
         ${e.strategy ? `<span class="memo-badge">${e.strategy}</span>` : ''}
         ${e.sector ? `<span class="memo-badge">${e.sector}</span>` : ''}
         ${e.mood ? `<span class="memo-badge">${e.mood}</span>` : ''}
@@ -1032,6 +1042,142 @@ function renderJournal() {
     container.appendChild(div);
   });
   loadChartThumbs();
+  renderPositions();
+}
+
+// ══ 분할매수·분할매도: 종목별 포지션 추적 (날짜순 이동평균단가) ══
+function jKey(e) { return (e.ticker || '').trim() || (e.name || '').trim(); }
+function jSortChrono(a, b) { return (a.date || '').localeCompare(b.date || '') || (Number(a.id) - Number(b.id)); }
+
+// 전체 일지 → 거래별 차수/보유수량/평단 + 현재 보유 포지션
+function jPositions(list) {
+  const perEntry = new Map(), holdings = [];
+  const groups = {};
+  list.forEach(e => { const k = jKey(e); if (k) (groups[k] = groups[k] || []).push(e); });
+  Object.entries(groups).forEach(([k, arr]) => {
+    arr.sort(jSortChrono);
+    let qty = 0, avg = 0, nb = 0, ns = 0, cycleStart = '', last = null;
+    arr.forEach(e => {
+      const q = Number(e.qty) || 0;
+      if (e.type === '매수') {
+        if (qty === 0) { nb = 0; ns = 0; cycleStart = e.date; }
+        const p = Number(e.buyPrice) || 0;
+        avg = qty + q ? (avg * qty + p * q) / (qty + q) : avg;
+        qty += q; nb++;
+        perEntry.set(e.id, { seq: nb, qtyAfter: qty, avgAfter: avg, final: false });
+      } else if (e.type === '매도') {
+        ns++;
+        const before = qty;
+        qty = Math.max(0, qty - q);
+        perEntry.set(e.id, { seq: ns, qtyAfter: qty, avgAfter: qty ? avg : 0, avgBefore: avg, final: qty === 0, over: q > before });
+        if (qty === 0) avg = 0;
+      }
+      last = e;
+    });
+    if (qty > 0) holdings.push({ key: k, name: last.name, ticker: last.ticker, market: last.market, qty, avg, cost: qty * avg, nb, ns, firstDate: cycleStart, lastDate: last.date });
+  });
+  holdings.sort((a, b) => b.cost - a.cost);
+  return { perEntry, holdings };
+}
+
+// 특정 날짜 기준 보유 포지션 (그날 기록분까지 포함)
+function jPosAt(key, date) {
+  key = (key || '').trim();
+  const arr = getJournal().filter(e => jKey(e) === key || (e.name || '').trim() === key)
+    .filter(e => !date || (e.date || '') <= date).sort(jSortChrono);
+  let qty = 0, avg = 0, nb = 0, ns = 0;
+  arr.forEach(e => {
+    const q = Number(e.qty) || 0;
+    if (e.type === '매수') { if (qty === 0) { nb = 0; ns = 0; } avg = (avg * qty + (Number(e.buyPrice) || 0) * q) / (qty + q || 1); qty += q; nb++; }
+    else if (e.type === '매도') { ns++; qty = Math.max(0, qty - q); if (qty === 0) avg = 0; }
+  });
+  return { qty, avg, nb, ns, count: arr.length };
+}
+
+function jSeqText(info, type) {
+  if (!info) return '';
+  if (type === '매수') return info.seq === 1 ? '신규매수' : `추가매수 ${info.seq}차`;
+  return info.final ? `매도 ${info.seq}차 · 전량청산` : `분할매도 ${info.seq}차`;
+}
+function jSeqBadge(info, type) {
+  if (!info) return '';
+  const t = jSeqText(info, type);
+  const extra = type === '매수'
+    ? ` · 평단 ${Math.round(info.avgAfter).toLocaleString()} · ${info.qtyAfter}주`
+    : (info.final ? '' : ` · 잔여 ${info.qtyAfter}주`);
+  const cls = type === '매수' ? 'seq-buy' : info.final ? 'seq-final' : 'seq-sell';
+  return `<span class="memo-badge seq-badge ${cls}">${t}${extra}</span>`;
+}
+
+// 입력 중 종목의 현재 포지션 안내 + 매도 시 평단 자동 입력
+function jPosHint() {
+  const box = document.getElementById('j-pos-hint');
+  if (!box) return;
+  const key = document.getElementById('j-ticker')?.value.trim() || document.getElementById('j-name')?.value.trim();
+  const type = document.getElementById('j-type')?.value;
+  const date = document.getElementById('j-date')?.value;
+  if (!key) { box.style.display = 'none'; return; }
+  const pos = jPosAt(key, date);
+  const bp = document.getElementById('j-buy-price');
+  const q = parseFloat(document.getElementById('j-qty')?.value) || 0;
+  let html = '';
+  if (pos.qty > 0) {
+    html = `📦 현재 보유 <b>${pos.qty}주</b> · 평단 <b>${Math.round(pos.avg).toLocaleString()}원</b> · 매수 ${pos.nb}회${pos.ns ? ` · 분할매도 ${pos.ns}회` : ''}`;
+    if (type === '매수') html += ` → 이번 거래: <b class="seq-buy-t">추가매수 ${pos.nb + 1}차</b>` + (q ? ` (매수 후 ${pos.qty + q}주)` : '');
+    else {
+      const left = pos.qty - q;
+      html += ` → 이번 거래: <b class="seq-sell-t">${q && left <= 0 ? `매도 ${pos.ns + 1}차 · 전량청산` : `분할매도 ${pos.ns + 1}차`}</b>` + (q && left > 0 ? ` (잔여 ${left}주)` : '');
+      if (q > pos.qty) html += ` <span style="color:var(--red)">⚠️ 보유 수량 초과</span>`;
+      // 매수단가가 비었거나 자동입력값이면 평단으로 채움
+      if (bp && (!bp.value || bp.dataset.auto === '1')) {
+        const v = String(Math.round(pos.avg));
+        if (bp.value !== v) { bp.value = v; bp.dataset.auto = '1'; calcJournal(); return; }
+      }
+      html += ` <span style="color:var(--text3)">· 매수단가에 평단 자동 입력</span>`;
+    }
+  } else if (pos.count) {
+    html = type === '매수' ? `🆕 일지 기준 보유 없음 → 이번 거래: <b class="seq-buy-t">신규매수 1차</b>` : `⚠️ 일지 기준 보유 수량 없음 (일지 이전 보유분이면 매수단가를 직접 입력)`;
+  } else {
+    html = type === '매수' ? `🆕 처음 기록하는 종목 → <b class="seq-buy-t">신규매수 1차</b>` : '';
+  }
+  box.innerHTML = html;
+  box.style.display = html ? '' : 'none';
+}
+document.addEventListener('input', e => { if (e.target?.id === 'j-buy-price') delete e.target.dataset.auto; if (e.target?.id === 'j-date') jPosHint(); });
+
+function renderPositions() {
+  const body = document.getElementById('positions-body'); if (!body) return;
+  const { holdings } = jPositions(getJournal());
+  document.getElementById('positions-empty').style.display = holdings.length ? 'none' : 'block';
+  body.innerHTML = holdings.map(h => `<tr>
+    <td><div style="font-weight:700; color:var(--text)">${h.name || ''}</div><div style="font-family:var(--mono); font-size:11px; color:var(--text3)">${h.ticker || ''}</div></td>
+    <td>${h.market || ''}</td>
+    <td style="font-family:var(--mono)">${h.qty.toLocaleString()}주</td>
+    <td style="font-family:var(--mono)">${Math.round(h.avg).toLocaleString()}원</td>
+    <td style="font-family:var(--mono)">${Math.round(h.cost).toLocaleString()}원</td>
+    <td style="font-family:var(--mono)">${h.nb}차</td>
+    <td style="font-family:var(--mono)">${h.ns ? h.ns + '회' : '-'}</td>
+    <td style="font-family:var(--mono); font-size:11px;">${h.firstDate || ''}</td>
+    <td style="font-family:var(--mono); font-size:11px;">${h.lastDate || ''}</td>
+    <td style="white-space:nowrap;">
+      <button class="btn btn-ghost btn-sm" onclick="jQuickTrade('${encodeURIComponent(h.key)}','매수')">+매수</button>
+      <button class="btn btn-ghost btn-sm" onclick="jQuickTrade('${encodeURIComponent(h.key)}','매도')">매도</button>
+    </td></tr>`).join('');
+}
+
+// 포지션에서 바로 추가매수/분할매도 기록
+function jQuickTrade(keyEnc, type) {
+  const key = decodeURIComponent(keyEnc);
+  const h = jPositions(getJournal()).holdings.find(x => x.key === key); if (!h) return;
+  clearJournalForm();
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
+  set('j-date', TODAY); set('j-ticker', h.ticker); set('j-name', h.name); set('j-market', h.market || 'KOSPI');
+  set('j-type', type);
+  if (type === '매도') set('j-qty', h.qty);
+  toggleSellFields();
+  const target = document.getElementById(type === '매도' ? 'j-sell-price' : 'j-buy-price');
+  document.getElementById('j-date').closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  setTimeout(() => target?.focus(), 350);
 }
 
 // ── 종목별 손익 ──
@@ -1222,13 +1368,15 @@ function exportJournalCSV() {
   const headers = ['거래일','시장','종목코드','종목명','거래유형','수량(주)',
     '매수단가(원)','매도단가(원)','거래금액(원)','수수료(원)','세금(원)',
     '실현손익(원)','손익률(%)','전략/테마','섹터','진입근거','청산근거','메모','투자심리',
-    '외인수급','시장거래대금','실전대응태그','차트URL'];
+    '외인수급','시장거래대금','실전대응태그','차트URL','차수','거래후 보유수량','거래후 평단'];
+  const posInfo = jPositions(list).perEntry;
   const rows = list.map(e => [
     e.date||'', e.market||'', e.ticker||'', e.name||'', e.type||'',
     e.qty||'', e.buyPrice||'', e.sellPrice||'', e.amount||'',
     e.fee||'', e.tax||'', e.pnlWon!=null?e.pnlWon:'', e.pnl!=null?e.pnl:'',
     e.strategy||'', e.sector||'', e.entryReason||'', e.exitReason||'', e.memo||'', e.mood||'',
-    e.flow||'', e.volState||'', (e.actionTags||[]).join(' | '), e.chartUrl||''
+    e.flow||'', e.volState||'', (e.actionTags||[]).join(' | '), e.chartUrl||'',
+    jSeqText(posInfo.get(e.id), e.type), posInfo.get(e.id)?.qtyAfter ?? '', posInfo.get(e.id)?.avgAfter ? Math.round(posInfo.get(e.id).avgAfter) : ''
   ].map(v => `"${String(v).replace(/"/g,'""')}"`));
   const bom = '\uFEFF';
   const csv = bom + [headers.map(h=>'"'+h+'"').join(','), ...rows.map(r=>r.join(','))].join('\n');
