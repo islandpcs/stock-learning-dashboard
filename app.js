@@ -868,6 +868,7 @@ function clearJournalForm() {
   });
   const bp = document.getElementById('j-buy-price'); if (bp) delete bp.dataset.auto;
   const moodEl = document.getElementById('j-mood'); if (moodEl) moodEl.value = '';
+  ['j-ticker', 'j-name'].forEach(id => { const el = document.getElementById(id); if (el) delete el.dataset.auto; });
   // 수정 모드 해제
   jRemoveChart = false;
   document.querySelectorAll('.journal-card.editing').forEach(c => c.classList.remove('editing'));
@@ -2981,7 +2982,7 @@ function swCalc() {
 function swClear() {
   ['sw-id','sw-name','sw-ticker','sw-target','sw-stop','sw-watch-date',
    'sw-q1','sw-q2','sw-cap','sw-q4','sw-cost','sw-good','sw-fix','sw-rule']
-    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    .forEach(id => { const el = document.getElementById(id); if (el) { el.value = ''; delete el.dataset.auto; } });
   document.getElementById('sw-buys').innerHTML = '';
   document.getElementById('sw-sells').innerHTML = '';
   swAddLeg('buy', { date: '' });
@@ -3277,3 +3278,58 @@ function exportSwingCSV() {
   a.download = '스윙일지_' + getDateStr() + '.csv'; a.click();
   showToast('📥 스윙일지 CSV 내보내기 완료!');
 }
+
+
+// ══════════════════════════════════════════
+// 🔎 종목코드 ↔ 종목명 자동 입력 (투자일지·스윙일지·관심종목에 기록된 종목 기준)
+// ══════════════════════════════════════════
+function knownStocks() {
+  const map = new Map(); // code -> {code, name, market, sector, strategy, date}
+  const put = (code, o) => {
+    code = (code || '').trim(); if (!code || !o.name) return;
+    const cur = map.get(code);
+    if (!cur || (o.date || '') >= (cur.date || '')) map.set(code, { ...cur, ...Object.fromEntries(Object.entries(o).filter(([, v]) => v)), code });
+  };
+  try { JSON.parse(localStorage.getItem('watchlist') || '[]').forEach(w => put(w.ticker, { name: w.name, date: '' })); } catch(e) {}
+  try { swGet().forEach(r => put(r.ticker, { name: r.name, date: r.entryDate || '' })); } catch(e) {}
+  try { getJournal().forEach(e => put(e.ticker, { name: e.name, market: e.market, sector: e.sector, strategy: e.strategy, date: e.date || '' })); } catch(e) {}
+  return map;
+}
+
+// prefix: 'j'(투자일지) | 'sw'(스윙일지), from: 'ticker' | 'name'
+function stockLookup(prefix, from) {
+  const tEl = document.getElementById(prefix + '-ticker'), nEl = document.getElementById(prefix + '-name');
+  const src = from === 'ticker' ? tEl : nEl, dst = from === 'ticker' ? nEl : tEl;
+  delete src.dataset.auto; // 직접 입력한 칸은 자동값이 아님
+  const map = knownStocks(), v = src.value.trim();
+  let hit = null;
+  if (from === 'ticker') hit = map.get(v);
+  else hit = [...map.values()].filter(s => s.name === v).sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
+  if (hit && (!dst.value.trim() || dst.dataset.auto === '1')) {
+    dst.value = from === 'ticker' ? hit.name : hit.code;
+    dst.dataset.auto = '1';
+    if (prefix === 'j') {
+      const set = (id, val) => { const el = document.getElementById(id); if (el && val && [...el.options].some(o => o.value === val)) el.value = val; };
+      set('j-market', hit.market); set('j-sector', hit.sector); set('j-strategy', hit.strategy);
+    }
+    src.classList.add('lookup-hit'); setTimeout(() => src.classList.remove('lookup-hit'), 600);
+  } else if (!hit && dst.dataset.auto === '1') {
+    dst.value = ''; delete dst.dataset.auto; // 코드가 바뀌어 더는 맞지 않으면 자동값 제거
+  }
+  if (prefix === 'j') jPosHint();
+}
+
+// 입력 목록(datalist): 보유 종목을 맨 위에
+function refreshStockLists() {
+  const codeList = document.getElementById('stock-code-list'), nameList = document.getElementById('stock-name-list');
+  if (!codeList || !nameList) return;
+  const map = knownStocks();
+  let holdings = [];
+  try { holdings = jPositions(getJournal()).holdings; } catch(e) {}
+  const held = new Map(holdings.map(h => [(h.ticker || '').trim(), h]));
+  const items = [...map.values()].sort((a, b) => (held.has(b.code) - held.has(a.code)) || (b.date || '').localeCompare(a.date || ''));
+  const esc = t => String(t).replace(/"/g, '&quot;');
+  codeList.innerHTML = items.map(s => `<option value="${esc(s.code)}" label="${esc(s.name)}${held.has(s.code) ? ` · 보유 ${held.get(s.code).qty}주` : ''}">`).join('');
+  nameList.innerHTML = [...new Set(items.map(s => s.name))].map(n => `<option value="${esc(n)}">`).join('');
+}
+document.addEventListener('focusin', e => { if (['j-ticker', 'j-name', 'sw-ticker', 'sw-name'].includes(e.target?.id)) refreshStockLists(); });

@@ -1010,3 +1010,4 @@ select.inp { cursor: pointer; }
 .seq-badge.seq-sell { color:#d97706; border-color:#d97706; }
 .seq-badge.seq-final { color:var(--red); border-color:var(--red); font-weight:700; }
 .journal-card.editing { outline:2px solid var(--gold); outline-offset:2px; }
+.inp.lookup-hit { border-color:var(--accent); box-shadow:0 0 0 2px #00c9a733; transition:box-shadow .3s; }

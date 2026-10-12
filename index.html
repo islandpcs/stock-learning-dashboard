@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>주식 투자자 학습 대시보드</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=202610122117">
+<link rel="stylesheet" href="style.css?v=202610122128">
 </head>
 <body>
 
@@ -760,9 +760,9 @@
       <div class="sw-sec-title">1. 기본 정보</div>
       <div class="input-row" style="flex-wrap:wrap;">
         <div><label class="form-label">종목명 <span class="req-mark">*</span></label>
-          <input class="inp inp-md" id="sw-name" placeholder="삼성전자" /></div>
+          <input class="inp inp-md" id="sw-name" placeholder="삼성전자" list="stock-name-list" autocomplete="off" oninput="stockLookup('sw','name')" /></div>
         <div><label class="form-label">종목코드</label>
-          <input class="inp inp-sm" id="sw-ticker" placeholder="005930" /></div>
+          <input class="inp inp-sm" id="sw-ticker" placeholder="005930" list="stock-code-list" autocomplete="off" oninput="stockLookup('sw','ticker')" /></div>
         <div><label class="form-label">매매 구분 <span class="req-mark">*</span></label>
           <div class="seg" id="sw-type-seg">
             <button type="button" data-v="65기법" onclick="swSeg('sw-type',this)">65기법</button>
@@ -941,9 +941,9 @@
             <option>ETF</option><option>미국</option>
           </select></div>
         <div><label class="form-label">종목코드</label>
-          <input class="inp inp-sm" id="j-ticker" placeholder="005930" oninput="jPosHint()" /></div>
+          <input class="inp inp-sm" id="j-ticker" placeholder="005930" list="stock-code-list" autocomplete="off" oninput="stockLookup('j','ticker')" /></div>
         <div><label class="form-label">종목명</label>
-          <input class="inp inp-md" id="j-name" placeholder="삼성전자" oninput="jPosHint()" /></div>
+          <input class="inp inp-md" id="j-name" placeholder="삼성전자" list="stock-name-list" autocomplete="off" oninput="stockLookup('j','name')" /></div>
         <div><label class="form-label">거래유형</label>
           <select class="inp inp-sm" id="j-type" onchange="toggleSellFields()">
             <option value="매수">🟢 매수</option>
@@ -1559,7 +1559,8 @@
 
 </main>
 
-<script src="app.js?v=202610122117"></script>
+<script src="app.js?v=202610122128"></script>
 <div id="chart-lightbox" onclick="this.style.display='none'" style="display:none; position:fixed; inset:0; background:#000000cc; z-index:1100; align-items:center; justify-content:center; cursor:zoom-out;"><img id="chart-lightbox-img" style="max-width:95vw; max-height:92vh; border-radius:6px;" /></div>
+<datalist id="stock-code-list"></datalist><datalist id="stock-name-list"></datalist>
 </body>
 </html>
